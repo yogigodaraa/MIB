@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Ship Movement Tracking - BHP Mooring System</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            color: white;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+
+        .navigation {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            backdrop-filter: blur(10px);
+        }
+
+        .nav-link {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .nav-link:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
+        }
+
+        .nav-link.active {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            box-shadow: 0 4px 16px rgba(40, 167, 69, 0.4);
+        }
+
+        .ship-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+            gap: 25px;
+        }
+
+        .ship-3d-card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: all 0.3s ease;
+        }
+
+        .ship-3d-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+        }
+
+        .ship-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid rgba(255,255,255,0.2);
+        }
+
+        .ship-info h2 {
+            margin: 0;
+            color: #ffffff;
+            font-size: 1.6em;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .ship-icon {
+            font-size: 2em;
+        }
+
+        .status-indicator {
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+            text-align: center;
+        }
+
+        .status-stable {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+        }
+
+        .status-active {
+            background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+            color: #000;
+        }
+
+        .status-erratic {
+            background: linear-gradient(135deg, #dc3545 0%, #e83e8c 100%);
+            color: white;
+        }
+
+        /* 3D Visualization Area */
+        .movement-3d {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            border-radius: 15px;
+            padding: 25px;
+            margin: 20px 0;
+            position: relative;
+            height: 300px;
+            overflow: hidden;
+            border: 2px solid rgba(255,255,255,0.2);
+        }
+
+        .berth-3d {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 80px;
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            border-radius: 10px;
+            border: 3px solid #adb5bd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+        }
+
+        .ship-3d {
+            position: absolute;
+            font-size: 2.5em;
+            transition: all 2s cubic-bezier(0.4, 0, 0.2, 1);
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+            z-index: 10;
+        }
+
+        .movement-trail {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(255,255,255,0.5);
+            border-radius: 50%;
+            transition: opacity 1s ease;
+        }
+
+        .coordinate-system {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 100px;
+            height: 100px;
+        }
+
+        .axis {
+            position: absolute;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .axis-x {
+            top: 50%;
+            right: 0;
+            color: #ff6b6b;
+        }
+
+        .axis-y {
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #4ecdc4;
+        }
+
+        .axis-z {
+            bottom: 0;
+            left: 0;
+            color: #ffe66d;
+        }
+
+        /* Movement Vector Indicators */
+        .vector-indicator {
+            position: absolute;
+            font-size: 1.5em;
+            z-index: 5;
+            animation: pulse 2s infinite;
+        }
+
+        .vector-forward {
+            top: 30%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #28a745;
+        }
+
+        .vector-backward {
+            bottom: 30%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #dc3545;
+        }
+
+        .vector-port {
+            top: 50%;
+            left: 20%;
+            transform: translateY(-50%);
+            color: #fd7e14;
+        }
+
+        .vector-starboard {
+            top: 50%;
+            right: 20%;
+            transform: translateY(-50%);
+            color: #6610f2;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.7; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.2); }
+        }
+
+        /* Position Data Grid */
+        .position-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .position-metric {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .metric-value {
+            font-size: 1.4em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .metric-label {
+            font-size: 0.8em;
+            color: rgba(255,255,255,0.8);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .positive { color: #28a745; }
+        .negative { color: #dc3545; }
+        .neutral { color: #6c757d; }
+
+        /* Hook Tension Visualization */
+        .hook-tension-3d {
+            background: rgba(0,0,0,0.3);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .tension-compass {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+            position: relative;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+        }
+
+        .tension-point {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .tension-low { background: #28a745; }
+        .tension-medium { background: #ffc107; }
+        .tension-high { background: #dc3545; }
+
+        .compass-label {
+            position: absolute;
+            font-size: 0.7em;
+            font-weight: bold;
+            color: rgba(255,255,255,0.8);
+        }
+
+        .label-bow { top: 5px; left: 50%; transform: translateX(-50%); }
+        .label-stern { bottom: 5px; left: 50%; transform: translateX(-50%); }
+        .label-port { top: 50%; left: 5px; transform: translateY(-50%); }
+        .label-starboard { top: 50%; right: 5px; transform: translateY(-50%); }
+
+        /* Movement Prediction Panel */
+        .prediction-panel {
+            background: linear-gradient(135deg, rgba(255,193,7,0.2) 0%, rgba(255,87,34,0.2) 100%);
+            border: 2px solid rgba(255,193,7,0.5);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .prediction-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .prediction-3d {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .prediction-coordinates {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .coordinate-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .warnings-list {
+            background: rgba(220,53,69,0.2);
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid #dc3545;
+        }
+
+        .warning-item {
+            margin: 8px 0;
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .ship-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .movement-3d {
+                height: 250px;
+            }
+            
+            .prediction-3d {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Loading Animation */
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚢 3D Ship Movement Tracking</h1>
+        <p>Advanced spatial visualization of ship positions and movements in 3D space</p>
+        <p><strong>Last Updated:</strong> <span id="lastUpdateTime">{{ last_updated }}</span></p>
+    </div>
+
+    <div class="navigation">
+        <a href="/" class="nav-link">📊 Dashboard</a>
+        <a href="/monitoring" class="nav-link">⚠️ Tension Monitoring</a>
+        <a href="/ship-movements" class="nav-link">🚢 Ship Movements</a>
+        <a href="/ship-3d" class="nav-link active">🌐 3D Tracking</a>
+    </div>
+
+    <div class="ship-container" id="shipContainer">
+        {% if movements %}
+            {% for berth_name, movement_data in movements.items() %}
+            <div class="ship-3d-card" data-berth="{{ berth_name }}">
+                <div class="ship-header">
+                    <div class="ship-info">
+                        <h2>
+                            <span class="ship-icon">🚢</span>
+                            {{ movement_data.ship_name }}
+                            <small style="font-size: 0.6em; color: rgba(255,255,255,0.7);">{{ movement_data.berth_name }}</small>
+                        </h2>
+                    </div>
+                    <div class="status-indicator status-{{ movement_data.movement_analysis.pattern }}">
+                        {{ movement_data.movement_analysis.pattern|title }}
+                    </div>
+                </div>
+
+                <!-- 3D Movement Visualization -->
+                <div class="movement-3d" id="movement3d-{{ berth_name }}">
+                    <!-- Coordinate System -->
+                    <div class="coordinate-system">
+                        <div class="axis axis-x">→ X (Fwd/Aft)</div>
+                        <div class="axis axis-y">↑ Y (Port/Stbd)</div>
+                        <div class="axis axis-z">⤴ Z (Up/Down)</div>
+                    </div>
+
+                    <!-- Berth Representation -->
+                    <div class="berth-3d">BERTH</div>
+
+                    <!-- Ship Position -->
+                    <div class="ship-3d" id="ship-{{ berth_name }}" style="
+                        left: calc(50% + {{ movement_data.current_position.x * 2 }}px);
+                        top: calc(50% + {{ movement_data.current_position.y * 2 }}px);
+                    ">🚢</div>
+
+                    <!-- Movement Vector Indicators -->
+                    {% if movement_data.movement_vector.direction == 'forward' %}
+                    <div class="vector-indicator vector-forward">⬆️</div>
+                    {% elif movement_data.movement_vector.direction == 'backward' %}
+                    <div class="vector-indicator vector-backward">⬇️</div>
+                    {% elif movement_data.movement_vector.direction == 'port' %}
+                    <div class="vector-indicator vector-port">⬅️</div>
+                    {% elif movement_data.movement_vector.direction == 'starboard' %}
+                    <div class="vector-indicator vector-starboard">➡️</div>
+                    {% endif %}
+
+                    <!-- Position Trail -->
+                    {% if movement_data and movement_data.position_history %}
+                    {% for pos in movement_data.position_history[-5:] %}
+                    <div class="movement-trail" style="
+                        left: calc(50% + {{ pos.position.x * 2 }}px);
+                        top: calc(50% + {{ pos.position.y * 2 }}px);
+                        opacity: {{ loop.index0 * 0.2 + 0.2 }};
+                    "></div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+
+                <!-- 3D Position Metrics -->
+                <div class="position-grid">
+                    {% if movement_data and movement_data.current_position %}
+                    <div class="position-metric">
+                        <div class="metric-value {{ 'positive' if movement_data.current_position.x > 0 else 'negative' if movement_data.current_position.x < 0 else 'neutral' }}">
+                            {{ "%.1f"|format(movement_data.current_position.x) }}m
+                        </div>
+                        <div class="metric-label">X Position<br><small>(- Forward, + Aft)</small></div>
+                    </div>
+                    <div class="position-metric">
+                        <div class="metric-value {{ 'positive' if movement_data.current_position.y > 0 else 'negative' if movement_data.current_position.y < 0 else 'neutral' }}">
+                            {{ "%.1f"|format(movement_data.current_position.y) }}m
+                        </div>
+                        <div class="metric-label">Y Position<br><small>(- Port, + Starboard)</small></div>
+                    </div>
+                    <div class="position-metric">
+                        <div class="metric-value {{ 'positive' if movement_data.current_position.z > 0 else 'negative' if movement_data.current_position.z < 0 else 'neutral' }}">
+                            {{ "%.1f"|format(movement_data.current_position.z) }}m
+                        </div>
+                        <div class="metric-label">Z Position<br><small>(+ Up, - Down)</small></div>
+                    </div>
+                    <div class="position-metric">
+                        <div class="metric-value">{{ "%.1f"|format(movement_data.current_position.distance) }}m</div>
+                        <div class="metric-label">Distance from Berth</div>
+                    </div>
+                    <div class="position-metric">
+                        <div class="metric-value">{{ "%.1f"|format(movement_data.movement_vector.speed) }}</div>
+                        <div class="metric-label">Movement Speed</div>
+                    </div>
+                    <div class="position-metric">
+                        <div class="metric-value">{{ (movement_data.current_position.confidence * 100)|int }}%</div>
+                        <div class="metric-label">Position Confidence</div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="position-grid">
+                    <p style="text-align: center; color: #999; padding: 20px;">No movement data available</p>
+                </div>
+                {% endif %}
+
+                <!-- Hook Tension Compass -->
+                {% if movement_data and movement_data.hook_positions %}
+                <div class="hook-tension-3d">
+                    <h4 style="text-align: center; margin-bottom: 20px;">Hook Tension Distribution</h4>
+                    <div class="tension-compass">
+                        <div class="compass-label label-bow">BOW</div>
+                        <div class="compass-label label-stern">STERN</div>
+                        <div class="compass-label label-port">PORT</div>
+                        <div class="compass-label label-starboard">STARBOARD</div>
+                        
+                        {% for hook_id, hook in movement_data.hook_positions.items() %}
+                        {% if hook.tension > 0 %}
+                        <div class="tension-point tension-{{ 'high' if hook.tension > 70 else 'medium' if hook.tension > 30 else 'low' }}" 
+                             style="
+                                left: calc(50% + {{ hook.x * 80 }}px);
+                                top: calc(50% + {{ hook.y * 80 }}px);
+                             "
+                             title="{{ hook_id }}: {{ hook.tension }}%">
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Movement Prediction -->
+                <div class="prediction-panel">
+                    <div class="prediction-header">
+                        <span style="font-size: 1.5em;">🔮</span>
+                        <h4 style="margin: 0;">3D Movement Prediction ({{ movement_data.movement_prediction.time_horizon.replace('_', ' ') }})</h4>
+                    </div>
+                    
+                    <div class="prediction-3d">
+                        <div class="prediction-coordinates">
+                            <h5 style="margin-top: 0;">Predicted Position:</h5>
+                            <div class="coordinate-item">
+                                <span>X (Fwd/Aft):</span>
+                                <span class="{{ 'positive' if movement_data.movement_prediction.predicted_position.x > 0 else 'negative' if movement_data.movement_prediction.predicted_position.x < 0 else 'neutral' }}">
+                                    {{ "%.1f"|format(movement_data.movement_prediction.predicted_position.x) }}m
+                                </span>
+                            </div>
+                            <div class="coordinate-item">
+                                <span>Y (Port/Stbd):</span>
+                                <span class="{{ 'positive' if movement_data.movement_prediction.predicted_position.y > 0 else 'negative' if movement_data.movement_prediction.predicted_position.y < 0 else 'neutral' }}">
+                                    {{ "%.1f"|format(movement_data.movement_prediction.predicted_position.y) }}m
+                                </span>
+                            </div>
+                            <div class="coordinate-item">
+                                <span>Z (Up/Down):</span>
+                                <span class="{{ 'positive' if movement_data.movement_prediction.predicted_position.z > 0 else 'negative' if movement_data.movement_prediction.predicted_position.z < 0 else 'neutral' }}">
+                                    {{ "%.1f"|format(movement_data.movement_prediction.predicted_position.z) }}m
+                                </span>
+                            </div>
+                            <div class="coordinate-item">
+                                <span>Confidence:</span>
+                                <span>{{ (movement_data.movement_prediction.confidence * 100)|int }}%</span>
+                            </div>
+                        </div>
+                        
+                        {% if movement_data.movement_prediction.warnings %}
+                        <div class="warnings-list">
+                            <h5 style="margin-top: 0;">⚠️ Alerts & Recommendations:</h5>
+                            {% for warning in movement_data.movement_prediction.warnings %}
+                            <div class="warning-item">{{ warning }}</div>
+                            {% endfor %}
+                            {% for recommendation in movement_data.movement_prediction.recommendations %}
+                            <div class="warning-item">💡 {{ recommendation }}</div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div style="text-align: center; color: rgba(255,255,255,0.7); padding: 40px;">
+                <div class="loading-spinner"></div>
+                <h2>🔄 Waiting for 3D movement data...</h2>
+                <p>Start the mooring data generator to see live 3D ship tracking:</p>
+                <code style="background: rgba(255,255,255,0.1); padding: 10px; border-radius: 5px;">
+                    mooring-data-generator http://127.0.0.1:8000/
+                </code>
+            </div>
+        {% endif %}
+    </div>
+
+    <script>
+        let autoRefresh = true;
+        let lastUpdateTimestamp = Date.now();
+
+        // Simulate real-time ship movement
+        function animateShipMovement(berthName, newPosition) {
+            const shipElement = document.getElementById(`ship-${berthName}`);
+            if (shipElement) {
+                const newX = 50 + (newPosition.x * 2);
+                const newY = 50 + (newPosition.y * 2);
+                
+                shipElement.style.left = `calc(${newX}%)`;
+                shipElement.style.top = `calc(${newY}%)`;
+                
+                // Add rotation based on movement direction
+                const angle = Math.atan2(newPosition.y, newPosition.x) * (180 / Math.PI);
+                shipElement.style.transform = `rotate(${angle}deg)`;
+            }
+        }
+
+        // Update movement trails
+        function updateMovementTrails(berthName, positionHistory) {
+            const container = document.getElementById(`movement3d-${berthName}`);
+            if (!container) return;
+
+            // Remove old trails
+            container.querySelectorAll('.movement-trail').forEach(trail => trail.remove());
+
+            // Add new trails
+            positionHistory.slice(-8).forEach((pos, index) => {
+                const trail = document.createElement('div');
+                trail.className = 'movement-trail';
+                trail.style.left = `calc(50% + ${pos.position.x * 2}px)`;
+                trail.style.top = `calc(50% + ${pos.position.y * 2}px)`;
+                trail.style.opacity = (index * 0.15 + 0.2);
+                trail.style.transform = `scale(${0.5 + index * 0.1})`;
+                container.appendChild(trail);
+            });
+        }
+
+        // Fetch and update 3D movement data
+        async function update3DMovements() {
+            if (!autoRefresh) return;
+
+            try {
+                const response = await fetch('/api/ship-3d-movements');
+                const result = await response.json();
+
+                if (result.movements) {
+                    Object.keys(result.movements).forEach(berthName => {
+                        const movement = result.movements[berthName];
+                        
+                        // Animate ship position
+                        animateShipMovement(berthName, movement.current_position);
+                        
+                        // Update trails
+                        if (movement.position_history) {
+                            updateMovementTrails(berthName, movement.position_history);
+                        }
+                    });
+
+                    lastUpdateTimestamp = Date.now();
+                    document.getElementById('lastUpdateTime').textContent = 
+                        new Date().toLocaleTimeString();
+                }
+            } catch (error) {
+                console.log('3D movement update failed:', error);
+            }
+        }
+
+        // Add floating animation to ships
+        function addFloatingAnimation() {
+            document.querySelectorAll('.ship-3d').forEach(ship => {
+                // Add subtle floating effect
+                ship.style.animation = 'float 4s ease-in-out infinite';
+            });
+        }
+
+        // Create floating animation keyframes
+        const floatingStyle = document.createElement('style');
+        floatingStyle.textContent = `
+            @keyframes float {
+                0%, 100% { transform: translateY(0px) rotate(0deg); }
+                25% { transform: translateY(-2px) rotate(1deg); }
+                50% { transform: translateY(0px) rotate(0deg); }
+                75% { transform: translateY(2px) rotate(-1deg); }
+            }
+        `;
+        document.head.appendChild(floatingStyle);
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            addFloatingAnimation();
+            
+            // Start auto-refresh
+            setInterval(update3DMovements, 4000);
+            
+            console.log('3D Ship Movement Tracking initialized!');
+        });
+
+        // Add interactive features
+        document.querySelectorAll('.ship-3d').forEach(ship => {
+            ship.addEventListener('click', function() {
+                // Add click animation
+                this.style.animation = 'none';
+                setTimeout(() => {
+                    this.style.animation = 'float 4s ease-in-out infinite';
+                }, 100);
+            });
+        });
+    </script>
+</body>
+</html>

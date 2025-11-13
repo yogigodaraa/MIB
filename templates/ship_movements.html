@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ship Movements - Mooring Data Dashboard</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .navigation {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .nav-link {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .nav-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .nav-link.active {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        }
+        .movement-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+            gap: 20px;
+        }
+        .ship-movement-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+            border: 2px solid #e0e0e0;
+            transition: all 0.3s ease;
+        }
+        .ship-movement-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px rgba(0,0,0,0.15);
+            border-color: #667eea;
+        }
+        .ship-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .ship-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .ship-icon {
+            font-size: 2.5em;
+            color: #667eea;
+        }
+        .ship-details h3 {
+            margin: 0;
+            color: #333;
+            font-size: 1.3em;
+        }
+        .berth-name {
+            color: #666;
+            font-size: 0.9em;
+            margin: 5px 0 0 0;
+        }
+        .stability-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+            text-align: center;
+        }
+        .stability-high {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .stability-medium {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .stability-low {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .movement-visual {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .berth-diagram {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            height: 120px;
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border-radius: 10px;
+            border: 2px solid #2196f3;
+        }
+        .berth-line {
+            width: 80%;
+            height: 8px;
+            background: #2196f3;
+            border-radius: 4px;
+            position: relative;
+        }
+        .ship-position {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 2em;
+            transition: all 1s ease;
+        }
+        .distance-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255,255,255,0.9);
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .movement-arrow {
+            position: absolute;
+            top: 70%;
+            font-size: 1.5em;
+            animation: pulse 2s infinite;
+        }
+        .arrow-away {
+            color: #f44336;
+            right: 20px;
+        }
+        .arrow-closer {
+            color: #4caf50;
+            left: 20px;
+        }
+        .arrow-stable {
+            color: #2196f3;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        @keyframes pulse {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.5; }
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .metric-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid #e0e0e0;
+        }
+        .metric-value {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .metric-label {
+            color: #666;
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .hook-tension-overview {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .tension-bars {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .tension-bar {
+            text-align: center;
+        }
+        .tension-bar-label {
+            font-size: 0.7em;
+            color: #666;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .tension-bar-fill {
+            height: 60px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+        }
+        .tension-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            border-radius: 4px;
+            transition: height 1s ease;
+        }
+        .tension-low { background: #4caf50; }
+        .tension-medium { background: #ff9800; }
+        .tension-high { background: #f44336; }
+        .movement-prediction {
+            background: linear-gradient(135deg, #fff9e6 0%, #fff3cd 100%);
+            border: 2px solid #ffc107;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .prediction-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .prediction-icon {
+            font-size: 1.5em;
+        }
+        .prediction-title {
+            font-weight: bold;
+            color: #856404;
+            font-size: 1.1em;
+        }
+        .prediction-trend {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .trend-indicator {
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-weight: bold;
+            font-size: 0.8em;
+        }
+        .trend-moving-away {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .trend-moving-closer {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+        .trend-stable {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        .confidence-meter {
+            background: #e0e0e0;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #f44336 0%, #ff9800 50%, #4caf50 100%);
+            border-radius: 4px;
+            transition: width 1s ease;
+        }
+        .recommendations {
+            margin-top: 15px;
+        }
+        .recommendation {
+            background: rgba(255,255,255,0.7);
+            padding: 8px 12px;
+            margin: 5px 0;
+            border-radius: 8px;
+            font-size: 0.9em;
+            border-left: 3px solid #ffc107;
+        }
+        .radar-status {
+            margin: 15px 0;
+        }
+        .radar-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .radar-mini {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            border: 2px solid;
+        }
+        .radar-mini.active {
+            border-color: #4caf50;
+            background: #f8fff8;
+        }
+        .radar-mini.inactive {
+            border-color: #f44336;
+            background: #fff8f8;
+        }
+        .radar-name {
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .radar-distance {
+            font-size: 1.1em;
+            color: #333;
+        }
+        .auto-refresh {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4caf50;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 0.9em;
+            cursor: pointer;
+            z-index: 1000;
+        }
+        .no-data {
+            text-align: center;
+            color: #999;
+            font-style: italic;
+            padding: 40px;
+            background: white;
+            border-radius: 10px;
+        }
+        .movement-direction-indicator {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 2.5em;
+            z-index: 2;
+        }
+        .direction-away {
+            right: 10px;
+            color: #f44336;
+            animation: moveAway 2s infinite ease-in-out;
+        }
+        .direction-closer {
+            left: 10px;
+            color: #4caf50;
+            animation: moveCloser 2s infinite ease-in-out;
+        }
+        .direction-stable {
+            left: 50%;
+            transform: translateX(-50%) translateY(-50%);
+            color: #2196f3;
+        }
+        @keyframes moveAway {
+            0%, 100% { transform: translateY(-50%) translateX(0); }
+            50% { transform: translateY(-50%) translateX(10px); }
+        }
+        @keyframes moveCloser {
+            0%, 100% { transform: translateY(-50%) translateX(0); }
+            50% { transform: translateY(-50%) translateX(-10px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="auto-refresh" id="autoRefresh">🔄 Auto-refresh: ON</div>
+    
+    <div class="header">
+        <h1>🚢 Ship Movement Tracking</h1>
+        <p>Real-time visualization of ship positions and movements relative to berths</p>
+        <p><strong>Last Updated:</strong> {{ last_updated }}</p>
+    </div>
+
+    <div class="navigation">
+        <a href="/" class="nav-link">📊 Dashboard</a>
+        <a href="/monitoring" class="nav-link">⚠️ Tension Monitoring</a>
+        <a href="/ship-movements" class="nav-link active">🚢 Ship Movements</a>
+        <a href="/ship-3d" class="nav-link">🌐 3D Tracking</a>
+    </div>
+
+    <div class="movement-container">
+        {% if movements %}
+            {% for berth_name, movement_data in movements.items() %}
+            <div class="ship-movement-card">
+                <div class="ship-header">
+                    <div class="ship-info">
+                        <div class="ship-icon">🚢</div>
+                        <div class="ship-details">
+                            <h3>{{ movement_data.ship_name }}</h3>
+                            <div class="berth-name">{{ movement_data.berth_name if movement_data else 'No Data' }}</div>
+                        </div>
+                    </div>
+                    {% if movement_data and movement_data.movement_indicators %}
+                    <div class="stability-badge 
+                        {% if movement_data.movement_indicators.stability_score >= 80 %}stability-high
+                        {% elif movement_data.movement_indicators.stability_score >= 60 %}stability-medium
+                        {% else %}stability-low{% endif %}">
+                        Stability: {{ movement_data.movement_indicators.stability_score }}%
+                    </div>
+                    {% else %}
+                    <div class="stability-badge stability-low">
+                        Stability: N/A
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Visual Movement Representation -->
+                <div class="movement-visual">
+                    <div class="berth-diagram">
+                        <div class="berth-line"></div>
+                        <div class="ship-position" style="
+                            {% if movement_data.current_distance %}
+                                {% set distance_offset = (movement_data.current_distance / 100) * 60 %}
+                                left: {{ 50 + distance_offset }}%;
+                            {% else %}
+                                left: 50%;
+                            {% endif %}
+                        ">🚢</div>
+                        
+                        {% if movement_data.current_distance %}
+                        <div class="distance-indicator">
+                            {{ "%.1f"|format(movement_data.current_distance) }}m from berth
+                        </div>
+                        {% endif %}
+                        
+                        {% if movement_data.movement_indicators.movement_direction == 'moving_away' %}
+                        <div class="movement-direction-indicator direction-away">➡️</div>
+                        {% elif movement_data.movement_indicators.movement_direction == 'moving_closer' %}
+                        <div class="movement-direction-indicator direction-closer">⬅️</div>
+                        {% else %}
+                        <div class="movement-direction-indicator direction-stable">⚓</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Metrics Grid -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-value">
+                            {% if movement_data.current_distance %}
+                                {{ "%.1f"|format(movement_data.current_distance) }}m
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </div>
+                        <div class="metric-label">Distance</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">
+                            {% if movement_data.distance_change %}
+                                {% if movement_data.distance_change > 0 %}+{% endif %}{{ "%.2f"|format(movement_data.distance_change) }}
+                            {% else %}
+                                0.00
+                            {% endif %}
+                        </div>
+                        <div class="metric-label">Change (m)</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">{{ movement_data.movement_indicators.movement_intensity|title }}</div>
+                        <div class="metric-label">Intensity</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">{{ movement_data.movement_indicators.risk_level|title }}</div>
+                        <div class="metric-label">Risk Level</div>
+                    </div>
+                </div>
+
+                <!-- Hook Tension Overview -->
+                {% if movement_data.hook_analysis.total_hooks > 0 %}
+                <div class="hook-tension-overview">
+                    <h4 style="margin: 0 0 15px 0; color: #333;">Hook Tension Distribution</h4>
+                    <div class="tension-bars">
+                        <div class="tension-bar">
+                            <div class="tension-bar-label">Bow</div>
+                            <div class="tension-bar-fill">
+                                <div class="tension-fill tension-medium" style="height: {{ (movement_data.hook_analysis.bow_tension / movement_data.hook_analysis.total_hooks) if movement_data.hook_analysis.total_hooks > 0 else 0 }}%"></div>
+                            </div>
+                        </div>
+                        <div class="tension-bar">
+                            <div class="tension-bar-label">Stern</div>
+                            <div class="tension-bar-fill">
+                                <div class="tension-fill tension-medium" style="height: {{ (movement_data.hook_analysis.stern_tension / movement_data.hook_analysis.total_hooks) if movement_data.hook_analysis.total_hooks > 0 else 0 }}%"></div>
+                            </div>
+                        </div>
+                        <div class="tension-bar">
+                            <div class="tension-bar-label">Port</div>
+                            <div class="tension-bar-fill">
+                                <div class="tension-fill tension-medium" style="height: {{ (movement_data.hook_analysis.port_tension / movement_data.hook_analysis.total_hooks) if movement_data.hook_analysis.total_hooks > 0 else 0 }}%"></div>
+                            </div>
+                        </div>
+                        <div class="tension-bar">
+                            <div class="tension-bar-label">Starboard</div>
+                            <div class="tension-bar-fill">
+                                <div class="tension-fill tension-medium" style="height: {{ (movement_data.hook_analysis.starboard_tension / movement_data.hook_analysis.total_hooks) if movement_data.hook_analysis.total_hooks > 0 else 0 }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Radar Status -->
+                {% if movement_data.radar_data %}
+                <div class="radar-status">
+                    <h4 style="margin: 0 0 10px 0; color: #333;">📡 Radar Sensors ({{ movement_data.radar_data|length }})</h4>
+                    <div class="radar-grid">
+                        {% for radar in movement_data.radar_data %}
+                        <div class="radar-mini {{ radar.status.lower() }}">
+                            <div class="radar-name">{{ radar.name }}</div>
+                            <div class="radar-distance">
+                                {% if radar.distance %}{{ "%.1f"|format(radar.distance) }}m{% else %}N/A{% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Movement Prediction -->
+                <div class="movement-prediction">
+                    <div class="prediction-header">
+                        <div class="prediction-icon">🔮</div>
+                        <div class="prediction-title">Movement Prediction</div>
+                    </div>
+                    
+                    <div class="prediction-trend">
+                        <span>Trend:</span>
+                        <span class="trend-indicator trend-{{ movement_data.movement_prediction.trend.replace('_', '-') }}">
+                            {% if movement_data.movement_prediction.trend == 'moving_away' %}📈 Moving Away
+                            {% elif movement_data.movement_prediction.trend == 'moving_closer' %}📉 Moving Closer
+                            {% else %}➡️ Stable{% endif %}
+                        </span>
+                    </div>
+                    
+                    <div>
+                        <span style="font-size: 0.9em; color: #666;">Confidence Level:</span>
+                        <div class="confidence-meter">
+                            <div class="confidence-fill" style="width: {{ (movement_data.movement_prediction.confidence * 100) }}%"></div>
+                        </div>
+                        <span style="font-size: 0.8em; color: #666;">{{ (movement_data.movement_prediction.confidence * 100)|int }}%</span>
+                    </div>
+                    
+                    {% if movement_data.movement_prediction.predicted_distance %}
+                    <div style="margin: 10px 0; font-size: 0.9em;">
+                        <strong>Predicted distance in {{ movement_data.movement_prediction.time_horizon.replace('_', ' ') }}:</strong> 
+                        {{ "%.1f"|format(movement_data.movement_prediction.predicted_distance) }}m
+                    </div>
+                    {% endif %}
+                    
+                    {% if movement_data.movement_prediction.recommendations %}
+                    <div class="recommendations">
+                        <strong style="font-size: 0.9em;">Recommendations:</strong>
+                        {% for recommendation in movement_data.movement_prediction.recommendations %}
+                        <div class="recommendation">{{ recommendation }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="no-data">
+                <h2>🔄 Waiting for movement data...</h2>
+                <p>Start the mooring data generator to see live ship movement tracking:</p>
+                <code>mooring-data-generator http://127.0.0.1:8000/</code>
+            </div>
+        {% endif %}
+    </div>
+
+    <script>
+        let autoRefresh = true;
+        
+        function toggleAutoRefresh() {
+            autoRefresh = !autoRefresh;
+            const button = document.getElementById('autoRefresh');
+            button.textContent = autoRefresh ? '🔄 Auto-refresh: ON' : '⏸️ Auto-refresh: OFF';
+            button.style.backgroundColor = autoRefresh ? '#4caf50' : '#f44336';
+        }
+        
+        async function updateMovementData() {
+            if (!autoRefresh) return;
+            
+            try {
+                const response = await fetch('/api/latest');
+                const result = await response.json();
+                
+                if (result.data && Object.keys(result.data).length > 0) {
+                    // Reload page with new data
+                    location.reload();
+                }
+            } catch (error) {
+                console.log('Update failed:', error);
+            }
+        }
+        
+        // Auto-refresh every 3 seconds for movement data
+        setInterval(updateMovementData, 3000);
+        
+        // Toggle auto-refresh on click
+        document.getElementById('autoRefresh').addEventListener('click', toggleAutoRefresh);
+        
+        // Animate ship positions on load
+        document.addEventListener('DOMContentLoaded', function() {
+            const shipPositions = document.querySelectorAll('.ship-position');
+            shipPositions.forEach(ship => {
+                ship.style.transition = 'left 2s ease-in-out';
+            });
+            
+            console.log('Ship Movement Tracking ready!');
+        });
+        
+        // Add movement simulation for demo purposes
+        function simulateMovement() {
+            const ships = document.querySelectorAll('.ship-position');
+            ships.forEach(ship => {
+                // Add subtle animation to show "live" movement
+                ship.style.animation = 'none';
+                setTimeout(() => {
+                    ship.style.animation = 'float 3s ease-in-out infinite';
+                }, 100);
+            });
+        }
+        
+        // Add CSS animation for floating effect
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes float {
+                0%, 100% { transform: translateY(-50%) translateX(0); }
+                50% { transform: translateY(-50%) translateX(2px); }
+            }
+        `;
+        document.head.appendChild(style);
+        
+        // Start movement simulation
+        setTimeout(simulateMovement, 1000);
+        setInterval(simulateMovement, 10000); // Re-animate every 10 seconds
+    </script>
+</body>
+</html>

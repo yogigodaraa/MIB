@@ -16,9 +16,21 @@ import uvicorn
 import random
 import math
 import statistics
+import asyncio
+import logging
+from ship_movement_analyzer import ShipMovementAnalyzer
+from enhanced_tension_monitor import EnhancedTensionMonitor
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Mooring Data Dashboard")
 templates = Jinja2Templates(directory="templates")
+
+# Initialize enhanced monitoring systems
+enhanced_tension_monitor = EnhancedTensionMonitor()
+ship_movement_analyzer = ShipMovementAnalyzer()
 
 def get_tension_class(tension):
     """Helper function to get CSS class based on tension level"""
@@ -40,6 +52,16 @@ templates.env.globals['get_tension_class'] = get_tension_class
 latest_data = {}
 data_history = []
 tension_history = {}  # Store tension data over time for predictive analytics
+
+# Initialize 3D movement analyzer
+movement_analyzer = ShipMovementAnalyzer()
+
+# Communication & Alert Management
+crew_responses = {}  # Track crew acknowledgments and responses
+active_alerts = {}   # Track active alerts and their status
+communication_log = []  # Log all communications
+crew_status = {}     # Track crew member status and assignments
+
 alert_thresholds = {
     "low": 30,
     "medium": 70,
@@ -87,6 +109,43 @@ class PortData(BaseModel):
     name: str
     berths: List[BerthData]
 
+# Communication Models
+class CrewMember(BaseModel):
+    id: str
+    name: str
+    role: str  # "deck_officer", "bosun", "engineer", "captain"
+    phone: Optional[str] = None
+    radio_channel: Optional[str] = None
+    location: Optional[str] = None
+    status: str = "available"  # "available", "responding", "busy", "off_duty"
+
+class AlertResponse(BaseModel):
+    alert_id: str
+    crew_member_id: str
+    response_type: str  # "acknowledged", "responding", "resolved", "escalated"
+    message: Optional[str] = None
+    timestamp: datetime
+    location: Optional[str] = None
+
+class CommunicationMessage(BaseModel):
+    id: str
+    message_type: str  # "sms", "push", "radio", "manual"
+    recipient: str
+    content: str
+    priority: str  # "low", "medium", "high", "critical"
+    sent_at: datetime
+    delivered_at: Optional[datetime] = None
+    acknowledged_at: Optional[datetime] = None
+    status: str = "pending"  # "pending", "sent", "delivered", "acknowledged", "failed"
+
+class ManualDataEntry(BaseModel):
+    hook_id: str
+    tension_value: int
+    entered_by: str
+    reason: str  # "sensor_fault", "calibration", "verification"
+    timestamp: datetime
+    confidence: float = 0.8  # Lower confidence for manual entries
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Main dashboard page"""
@@ -97,21 +156,310 @@ async def dashboard(request: Request):
         "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S") if latest_data else "No data received yet"
     })
 
+def convert_to_serializable(obj):
+    """Convert datetime objects to strings for JSON serialization"""
+    if isinstance(obj, dict):
+        return {key: convert_to_serializable(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_serializable(item) for item in obj]
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    else:
+        return obj
+
+def calculate_ship_movements():
+    """Calculate ship movement data based on radar distances and hook tensions"""
+    movements = {}
+    
+    if not latest_data or 'berths' not in latest_data:
+        return movements
+    
+    for berth in latest_data['berths']:
+        ship_name = berth['ship']['name']
+        berth_name = berth['name']
+        
+        # Calculate movement based on radar data
+        radar_data = []
+        for radar in berth.get('radars', []):
+            if radar.get('shipDistance') is not None:
+                radar_data.append({
+                    'name': radar['name'],
+                    'distance': radar['shipDistance'],
+                    'distance_change': radar.get('distanceChange', 0),
+                    'status': radar['distanceStatus']
+                })
+        
+        # Calculate average distance and movement
+        if radar_data:
+            avg_distance = sum(r['distance'] for r in radar_data) / len(radar_data)
+            avg_change = sum(r['distance_change'] for r in radar_data) / len(radar_data)
+        else:
+            avg_distance = None
+            avg_change = 0
+        
+        # Analyze hook tensions to determine movement direction
+        hook_tensions = []
+        hook_analysis = {
+            'bow_tension': 0,
+            'stern_tension': 0,
+            'port_tension': 0,
+            'starboard_tension': 0,
+            'total_hooks': 0,
+            'faulted_hooks': 0
+        }
+        
+        for bollard in berth.get('bollards', []):
+            for hook in bollard.get('hooks', []):
+                if hook.get('tension') is not None:
+                    hook_tensions.append(hook['tension'])
+                    hook_analysis['total_hooks'] += 1
+                    
+                    # Analyze by line type
+                    line_type = hook.get('attachedLine', '').upper()
+                    if any(keyword in line_type for keyword in ['BOW', 'FORWARD', 'HEAD']):
+                        hook_analysis['bow_tension'] += hook['tension']
+                    elif any(keyword in line_type for keyword in ['STERN', 'AFT', 'TAIL']):
+                        hook_analysis['stern_tension'] += hook['tension']
+                    elif 'PORT' in line_type or 'LEFT' in line_type:
+                        hook_analysis['port_tension'] += hook['tension']
+                    elif 'STARBOARD' in line_type or 'RIGHT' in line_type:
+                        hook_analysis['starboard_tension'] += hook['tension']
+                
+                if hook.get('faulted', False):
+                    hook_analysis['faulted_hooks'] += 1
+        
+        # Calculate movement indicators
+        movement_indicators = calculate_movement_indicators(avg_distance, avg_change, hook_analysis, hook_tensions)
+        
+        # Predict movement trend
+        movement_prediction = predict_movement_trend(berth_name, avg_distance, avg_change, hook_tensions)
+        
+        movements[berth_name] = {
+            'ship_name': ship_name,
+            'berth_name': berth_name,
+            'current_distance': avg_distance,
+            'distance_change': avg_change,
+            'radar_data': radar_data,
+            'hook_analysis': hook_analysis,
+            'movement_indicators': movement_indicators,
+            'movement_prediction': movement_prediction,
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    return movements
+
+def calculate_movement_indicators(avg_distance, avg_change, hook_analysis, hook_tensions):
+    """Calculate various movement indicators based on sensor data"""
+    indicators = {
+        'movement_direction': 'stable',
+        'movement_intensity': 'low',
+        'berth_strain': 'normal',
+        'stability_score': 85,
+        'risk_level': 'low'
+    }
+    
+    # Movement direction based on distance change
+    if avg_change and abs(avg_change) > 0.1:
+        if avg_change > 0:
+            indicators['movement_direction'] = 'moving_away'
+        else:
+            indicators['movement_direction'] = 'moving_closer'
+    
+    # Movement intensity based on magnitude of change
+    if avg_change and abs(avg_change) > 1.0:
+        indicators['movement_intensity'] = 'high'
+    elif avg_change and abs(avg_change) > 0.5:
+        indicators['movement_intensity'] = 'medium'
+    
+    # Berth strain analysis
+    if hook_tensions:
+        avg_tension = sum(hook_tensions) / len(hook_tensions)
+        max_tension = max(hook_tensions)
+        
+        if max_tension > 90 or avg_tension > 75:
+            indicators['berth_strain'] = 'high'
+            indicators['risk_level'] = 'high'
+        elif max_tension > 70 or avg_tension > 60:
+            indicators['berth_strain'] = 'medium'
+            indicators['risk_level'] = 'medium'
+    
+    # Calculate stability score
+    stability_factors = []
+    
+    # Distance stability (closer to berth is better)
+    if avg_distance:
+        if avg_distance < 10:
+            stability_factors.append(95)
+        elif avg_distance < 20:
+            stability_factors.append(85)
+        elif avg_distance < 50:
+            stability_factors.append(70)
+        else:
+            stability_factors.append(50)
+    
+    # Change stability (less movement is better)
+    if avg_change:
+        if abs(avg_change) < 0.1:
+            stability_factors.append(95)
+        elif abs(avg_change) < 0.5:
+            stability_factors.append(80)
+        elif abs(avg_change) < 1.0:
+            stability_factors.append(65)
+        else:
+            stability_factors.append(40)
+    
+    # Hook tension balance
+    if hook_tensions:
+        tension_std = statistics.stdev(hook_tensions) if len(hook_tensions) > 1 else 0
+        if tension_std < 10:
+            stability_factors.append(90)
+        elif tension_std < 20:
+            stability_factors.append(75)
+        else:
+            stability_factors.append(60)
+    
+    # Faulted sensors impact
+    if hook_analysis['total_hooks'] > 0:
+        fault_ratio = hook_analysis['faulted_hooks'] / hook_analysis['total_hooks']
+        stability_factors.append(max(50, 100 - (fault_ratio * 50)))
+    
+    # Calculate final stability score
+    if stability_factors:
+        indicators['stability_score'] = int(sum(stability_factors) / len(stability_factors))
+    
+    return indicators
+
+def predict_movement_trend(berth_name, current_distance, current_change, hook_tensions):
+    """Predict future movement trends"""
+    prediction = {
+        'trend': 'stable',
+        'confidence': 0.7,
+        'time_horizon': '5_minutes',
+        'predicted_distance': current_distance,
+        'recommendations': []
+    }
+    
+    # Store movement history for trend analysis
+    movement_key = f"movement_{berth_name}"
+    if movement_key not in tension_history:
+        tension_history[movement_key] = []
+    
+    # Add current data point
+    tension_history[movement_key].append({
+        'timestamp': datetime.now().isoformat(),
+        'distance': current_distance,
+        'change': current_change,
+        'avg_tension': sum(hook_tensions) / len(hook_tensions) if hook_tensions else 0
+    })
+    
+    # Keep only last 10 readings
+    if len(tension_history[movement_key]) > 10:
+        tension_history[movement_key] = tension_history[movement_key][-10:]
+    
+    # Analyze trend if we have enough data
+    if len(tension_history[movement_key]) >= 3:
+        recent_changes = [reading['change'] for reading in tension_history[movement_key][-5:]]
+        recent_distances = [reading['distance'] for reading in tension_history[movement_key][-5:]]
+        
+        # Calculate trends
+        avg_recent_change = sum(recent_changes) / len(recent_changes)
+        distance_trend = recent_distances[-1] - recent_distances[0] if len(recent_distances) > 1 else 0
+        
+        # Determine trend
+        if abs(avg_recent_change) > 0.2:
+            if avg_recent_change > 0:
+                prediction['trend'] = 'moving_away'
+                prediction['predicted_distance'] = current_distance + (avg_recent_change * 10)  # 5min projection
+            else:
+                prediction['trend'] = 'moving_closer'
+                prediction['predicted_distance'] = current_distance + (avg_recent_change * 10)
+        
+        # Calculate confidence based on consistency
+        change_std = statistics.stdev(recent_changes) if len(recent_changes) > 1 else 0
+        prediction['confidence'] = max(0.3, 0.9 - (change_std / 10))
+    
+    # Generate recommendations
+    if current_distance and current_distance > 50:
+        prediction['recommendations'].append("⚠️ Ship distance increasing - monitor mooring lines")
+    
+    if current_change and abs(current_change) > 1.0:
+        prediction['recommendations'].append("🔴 Significant movement detected - check environmental conditions")
+    
+    if hook_tensions and max(hook_tensions) > 85:
+        prediction['recommendations'].append("🚨 High hook tension detected - consider line adjustment")
+    
+    if prediction['trend'] == 'moving_away':
+        prediction['recommendations'].append("📍 Ship drifting away from berth - verify anchor/mooring security")
+    
+    return prediction
+
 @app.get("/monitoring", response_class=HTMLResponse)
 async def monitoring_page(request: Request):
     """Real-time tension monitoring page"""
     alerts = generate_tension_alerts()
+    
+    # Convert latest_data to JSON-serializable format
+    serializable_data = None
+    if latest_data:
+        serializable_data = convert_to_serializable(latest_data)
+    
     return templates.TemplateResponse("monitoring.html", {
         "request": request,
-        "latest_data": latest_data,
+        "latest_data": serializable_data,
         "alerts": alerts,
         "tension_history": tension_history,
         "thresholds": alert_thresholds,
         "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S") if latest_data else "No data received yet"
     })
 
+@app.get("/ship-3d", response_class=HTMLResponse)
+async def ship_3d_page(request: Request):
+    """3D ship movement visualization page"""
+    movements_3d = calculate_3d_movements()
+    
+    # Convert latest_data to JSON-serializable format
+    serializable_data = None
+    if latest_data:
+        serializable_data = convert_to_serializable(latest_data)
+    
+    return templates.TemplateResponse("ship_3d.html", {
+        "request": request,
+        "latest_data": serializable_data,
+        "movements": movements_3d,
+        "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S") if latest_data else "No data received yet"
+    })
+
+def calculate_3d_movements():
+    """Calculate 3D ship movements using the analyzer"""
+    movements = {}
+    
+    if not latest_data or 'berths' not in latest_data:
+        return movements
+    
+    for berth in latest_data['berths']:
+        berth_name = berth['name']
+        movement_data = movement_analyzer.analyze_3d_movement(berth, berth_name)
+        movements[berth_name] = movement_data
+    
+    return movements
+async def ship_movements_page(request: Request):
+    """Ship movement visualization page"""
+    movements = calculate_ship_movements()
+    
+    # Convert latest_data to JSON-serializable format
+    serializable_data = None
+    if latest_data:
+        serializable_data = convert_to_serializable(latest_data)
+    
+    return templates.TemplateResponse("ship_movements.html", {
+        "request": request,
+        "latest_data": serializable_data,
+        "movements": movements,
+        "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S") if latest_data else "No data received yet"
+    })
+
 def generate_tension_alerts():
-    """Generate tension alerts based on current data and predictions"""
+    """Generate enhanced tension alerts with improved accuracy"""
     alerts = []
     if not latest_data or 'berths' not in latest_data:
         return alerts
@@ -120,40 +468,252 @@ def generate_tension_alerts():
         for bollard in berth.get('bollards', []):
             for hook in bollard.get('hooks', []):
                 if hook.get('tension') is not None:
-                    tension = hook['tension']
+                    raw_tension = hook['tension']
                     hook_id = f"{berth['name']}-{bollard['name']}-{hook['name']}"
                     
-                    # Store tension history for predictions
+                    # Process tension reading through enhanced monitor
+                    sensor_metadata = {
+                        'sensor_quality': hook.get('sensor_quality', 'good'),
+                        'calibration_date': hook.get('calibration_date'),
+                        'environmental_factors': hook.get('environmental_factors', {}),
+                        'faulted': hook.get('faulted', False)
+                    }
+                    
+                    processed_reading = enhanced_tension_monitor.process_tension_reading(
+                        hook_id, raw_tension, sensor_metadata
+                    )
+                    
+                    # Store enhanced data in tension history
                     if hook_id not in tension_history:
                         tension_history[hook_id] = []
                     
                     tension_history[hook_id].append({
-                        'timestamp': datetime.now().isoformat(),
-                        'tension': tension
+                        'timestamp': processed_reading['timestamp'].isoformat(),
+                        'raw_tension': processed_reading['raw_value'],
+                        'processed_tension': processed_reading['processed_value'],
+                        'confidence': processed_reading['confidence_score'],
+                        'quality_flags': processed_reading['quality_flags'],
+                        'is_outlier': processed_reading['is_outlier']
                     })
                     
-                    # Keep only last 20 readings for prediction
-                    if len(tension_history[hook_id]) > 20:
-                        tension_history[hook_id] = tension_history[hook_id][-20:]
+                    # Keep only last 50 readings for better analysis
+                    if len(tension_history[hook_id]) > 50:
+                        tension_history[hook_id] = tension_history[hook_id][-50:]
                     
-                    # Generate alerts based on tension levels
-                    alert_level = get_tension_alert_level(tension)
+                    # Use processed tension for alert generation
+                    tension_to_use = processed_reading['processed_value']
+                    if tension_to_use is None:  # Low confidence reading
+                        tension_to_use = raw_tension
+                    
+                    # Generate alerts based on processed tension levels
+                    alert_level = get_enhanced_tension_alert_level(
+                        tension_to_use, processed_reading['confidence_score'], 
+                        processed_reading['quality_flags']
+                    )
+                    
                     if alert_level != 'safe':
-                        prediction = predict_tension_trend(hook_id)
-                        alerts.append({
+                        prediction = predict_enhanced_tension_trend(hook_id, processed_reading)
+                        
+                        alert_data = {
                             'id': hook_id,
                             'berth': berth['name'],
                             'bollard': bollard['name'],
                             'hook': hook['name'],
-                            'current_tension': tension,
+                            'raw_tension': processed_reading['raw_value'],
+                            'processed_tension': tension_to_use,
+                            'confidence_score': processed_reading['confidence_score'],
                             'level': alert_level,
                             'prediction': prediction,
-                            'timestamp': datetime.now().isoformat(),
+                            'timestamp': processed_reading['timestamp'].isoformat(),
                             'faulted': hook.get('faulted', False),
-                            'attached_line': hook.get('attachedLine')
-                        })
+                            'attached_line': hook.get('attachedLine'),
+                            'quality_flags': processed_reading['quality_flags'],
+                            'accuracy_recommendations': processed_reading['recommendations'],
+                            'processing_details': {
+                                'is_outlier': processed_reading['is_outlier'],
+                                'outlier_score': processed_reading['outlier_score'],
+                                'drift_correction': processed_reading['drift_correction'],
+                                'environmental_correction': processed_reading['environmental_correction'],
+                                'cross_validation_delta': processed_reading['cross_validation_delta']
+                            }
+                        }
+                        alerts.append(alert_data)
+                        
+                        # Trigger communication cascade for new critical/high alerts
+                        if alert_level in ['critical', 'high'] and hook_id not in active_alerts:
+                            asyncio.create_task(trigger_alert_cascade(alert_data))
     
     return sorted(alerts, key=lambda x: get_alert_priority(x['level']), reverse=True)
+
+def get_enhanced_tension_alert_level(tension, confidence_score, quality_flags):
+    """Enhanced alert level determination with confidence and quality considerations"""
+    base_level = get_tension_alert_level(tension)
+    
+    # Adjust alert level based on confidence and quality
+    if confidence_score < 0.5:
+        # Low confidence readings get elevated alert level for caution
+        if base_level == 'safe':
+            return 'low'
+        elif base_level == 'low':
+            return 'medium'
+    
+    # Check quality flags for additional concerns
+    if 'SENSOR_DEGRADATION' in quality_flags or 'CALIBRATION_OVERDUE' in quality_flags:
+        if base_level in ['safe', 'low']:
+            return 'medium'  # Elevate due to sensor issues
+    
+    if 'LOW_CONFIDENCE' in quality_flags and base_level in ['medium', 'high']:
+        # For higher tensions with low confidence, maintain alert but flag uncertainty
+        pass
+    
+    return base_level
+
+def predict_enhanced_tension_trend(hook_id, processed_reading):
+    """Enhanced tension trend prediction using processed data"""
+    if hook_id not in tension_history or len(tension_history[hook_id]) < 3:
+        return {'trend': 'stable', 'prediction': None, 'confidence': 0.5}
+    
+    history = tension_history[hook_id][-15:]  # Use last 15 readings
+    
+    # Filter out low-confidence readings for trend analysis
+    reliable_readings = [r for r in history if r.get('confidence', 0) > 0.6]
+    
+    if len(reliable_readings) < 3:
+        return {'trend': 'insufficient_data', 'prediction': None, 'confidence': 0.3}
+    
+    # Use processed tensions for trend calculation
+    tensions = [r['processed_tension'] for r in reliable_readings if r['processed_tension'] is not None]
+    
+    if len(tensions) < 3:
+        # Fall back to raw tensions if processed unavailable
+        tensions = [r['raw_tension'] for r in reliable_readings]
+    
+    # Enhanced linear trend calculation with outlier filtering
+    # Remove outliers before trend calculation
+    if len(tensions) > 5:
+        mean_tension = statistics.mean(tensions)
+        std_tension = statistics.stdev(tensions)
+        filtered_tensions = [t for t in tensions if abs(t - mean_tension) <= 2 * std_tension]
+        if len(filtered_tensions) >= 3:
+            tensions = filtered_tensions
+    
+    # Calculate trend
+    n = len(tensions)
+    if n < 2:
+        return {'trend': 'stable', 'prediction': None, 'confidence': 0.4}
+    
+    x_sum = sum(range(n))
+    y_sum = sum(tensions)
+    xy_sum = sum(i * tensions[i] for i in range(n))
+    x2_sum = sum(i * i for i in range(n))
+    
+    if n * x2_sum - x_sum * x_sum == 0:
+        return {'trend': 'stable', 'prediction': None, 'confidence': 0.5}
+    
+    slope = (n * xy_sum - x_sum * y_sum) / (n * x2_sum - x_sum * x_sum)
+    intercept = (y_sum - slope * x_sum) / n
+    
+    # Predict tension in next 5 minutes (assuming readings every 10 seconds)
+    future_steps = 30  # 5 minutes / 10 seconds
+    future_tension = tensions[-1] + slope * future_steps
+    
+    # Determine trend direction with enhanced logic
+    if abs(slope) < 0.05:  # Very small slope
+        trend = 'stable'
+    elif slope > 0.2:  # Significant upward trend
+        trend = 'rapidly_increasing'
+    elif slope > 0.05:
+        trend = 'increasing'
+    elif slope < -0.2:  # Significant downward trend
+        trend = 'rapidly_decreasing'
+    elif slope < -0.05:
+        trend = 'decreasing'
+    else:
+        trend = 'stable'
+    
+    # Calculate confidence based on data quality
+    avg_confidence = statistics.mean([r.get('confidence', 0.7) for r in reliable_readings])
+    trend_confidence = min(1.0, avg_confidence * (len(reliable_readings) / 10.0))
+    
+    # Calculate R-squared for trend reliability
+    if len(tensions) > 2:
+        y_pred = [intercept + slope * i for i in range(len(tensions))]
+        ss_res = sum((tensions[i] - y_pred[i])**2 for i in range(len(tensions)))
+        ss_tot = sum((t - statistics.mean(tensions))**2 for t in tensions)
+        r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+        trend_confidence *= max(0.3, r_squared)
+    
+    prediction_result = {
+        'trend': trend,
+        'slope': round(slope, 4),
+        'current': tensions[-1],
+        'predicted_5min': round(future_tension, 1),
+        'confidence': round(trend_confidence, 3),
+        'r_squared': round(r_squared if 'r_squared' in locals() else 0, 3),
+        'data_points_used': len(tensions),
+        'time_to_critical': calculate_time_to_critical_enhanced(tensions[-1], slope) if slope > 0 else None,
+        'quality_assessment': assess_prediction_quality(reliable_readings, processed_reading)
+    }
+    
+    return prediction_result
+
+def calculate_time_to_critical_enhanced(current_tension, slope):
+    """Enhanced calculation of time to critical tension level"""
+    if slope <= 0:
+        return None
+    
+    critical_threshold = alert_thresholds['critical']
+    time_to_critical = (critical_threshold - current_tension) / slope
+    
+    if time_to_critical <= 0:
+        return None
+    
+    # Convert to minutes (assuming readings every 10 seconds)
+    minutes = (time_to_critical * 10) / 60
+    return round(minutes, 1) if minutes > 0 else None
+
+def assess_prediction_quality(recent_readings, current_reading):
+    """Assess the quality of tension prediction"""
+    quality = {
+        'overall_score': 0.7,
+        'factors': []
+    }
+    
+    # Check data consistency
+    confidences = [r.get('confidence', 0.7) for r in recent_readings]
+    avg_confidence = statistics.mean(confidences)
+    
+    if avg_confidence > 0.8:
+        quality['factors'].append('High sensor confidence')
+        quality['overall_score'] += 0.1
+    elif avg_confidence < 0.5:
+        quality['factors'].append('Low sensor confidence')
+        quality['overall_score'] -= 0.2
+    
+    # Check for outliers in recent data
+    outlier_count = sum(1 for r in recent_readings if r.get('is_outlier', False))
+    outlier_ratio = outlier_count / len(recent_readings)
+    
+    if outlier_ratio > 0.3:
+        quality['factors'].append('High outlier rate')
+        quality['overall_score'] -= 0.15
+    elif outlier_ratio < 0.1:
+        quality['factors'].append('Low outlier rate')
+        quality['overall_score'] += 0.05
+    
+    # Check sensor health flags
+    current_flags = current_reading.get('quality_flags', [])
+    if 'CALIBRATION_OVERDUE' in current_flags:
+        quality['factors'].append('Sensor calibration overdue')
+        quality['overall_score'] -= 0.1
+    
+    if 'SENSOR_DEGRADATION' in current_flags:
+        quality['factors'].append('Sensor degradation detected')
+        quality['overall_score'] -= 0.15
+    
+    quality['overall_score'] = max(0.1, min(1.0, quality['overall_score']))
+    
+    return quality
 
 def get_tension_alert_level(tension):
     """Determine alert level based on tension value"""
@@ -534,6 +1094,244 @@ def get_hook_recommendations(hook_info):
     
     return recommendations
 
+# Communication Engine Functions
+async def send_sms_alert(phone_number: str, message: str, priority: str = "medium"):
+    """Send SMS alert to crew member (integration point for Twilio/etc)"""
+    # In production, integrate with Twilio or similar service
+    # For demo purposes, we'll simulate the SMS
+    
+    message_id = f"sms_{datetime.now().timestamp()}"
+    
+    # Log the communication
+    comm_message = {
+        "id": message_id,
+        "message_type": "sms",
+        "recipient": phone_number,
+        "content": message,
+        "priority": priority,
+        "sent_at": datetime.now().isoformat(),
+        "status": "sent"  # In real implementation: "pending" → "sent" → "delivered"
+    }
+    
+    communication_log.append(comm_message)
+    
+    # Simulate SMS delivery delay
+    await asyncio.sleep(0.1)
+    
+    logger.info(f"SMS sent to {phone_number}: {message}")
+    return message_id
+
+async def send_push_notification(crew_id: str, title: str, message: str, priority: str = "medium"):
+    """Send push notification to crew mobile app"""
+    # Integration point for Firebase/APNs/etc
+    
+    message_id = f"push_{datetime.now().timestamp()}"
+    
+    comm_message = {
+        "id": message_id,
+        "message_type": "push",
+        "recipient": crew_id,
+        "content": f"{title}: {message}",
+        "priority": priority,
+        "sent_at": datetime.now().isoformat(),
+        "status": "sent"
+    }
+    
+    communication_log.append(comm_message)
+    
+    logger.info(f"Push notification sent to {crew_id}: {title}")
+    return message_id
+
+async def broadcast_radio_alert(message: str, channel: str = "bridge"):
+    """Broadcast critical alert over radio system"""
+    # Integration point for radio transmission hardware
+    
+    message_id = f"radio_{datetime.now().timestamp()}"
+    
+    comm_message = {
+        "id": message_id,
+        "message_type": "radio",
+        "recipient": f"channel_{channel}",
+        "content": message,
+        "priority": "critical",
+        "sent_at": datetime.now().isoformat(),
+        "status": "broadcasted"
+    }
+    
+    communication_log.append(comm_message)
+    
+    logger.info(f"Radio broadcast on {channel}: {message}")
+    return message_id
+
+def process_crew_response(alert_id: str, crew_id: str, response_type: str, message: str = None):
+    """Process crew response to an alert"""
+    
+    response = {
+        "alert_id": alert_id,
+        "crew_member_id": crew_id,
+        "response_type": response_type,
+        "message": message,
+        "timestamp": datetime.now().isoformat(),
+        "location": crew_status.get(crew_id, {}).get("location", "unknown")
+    }
+    
+    # Store response
+    if alert_id not in crew_responses:
+        crew_responses[alert_id] = []
+    crew_responses[alert_id].append(response)
+    
+    # Update crew status
+    if crew_id in crew_status:
+        if response_type == "acknowledged":
+            crew_status[crew_id]["status"] = "responding"
+        elif response_type == "resolved":
+            crew_status[crew_id]["status"] = "available"
+    
+    # Update alert status
+    if alert_id in active_alerts:
+        active_alerts[alert_id]["last_response"] = response
+        if response_type == "resolved":
+            active_alerts[alert_id]["status"] = "resolved"
+            active_alerts[alert_id]["resolved_at"] = datetime.now().isoformat()
+    
+    logger.info(f"Crew response recorded: {crew_id} {response_type} alert {alert_id}")
+    
+    return response
+
+async def trigger_alert_cascade(alert_data: dict):
+    """Trigger appropriate communication channels based on alert level"""
+    
+    alert_level = alert_data.get('level', 'low')
+    hook_id = alert_data.get('id', 'unknown')
+    tension = alert_data.get('current_tension', 0)
+    prediction = alert_data.get('prediction', {})
+    
+    # Generate alert ID
+    alert_id = f"alert_{datetime.now().timestamp()}"
+    
+    # Store active alert
+    active_alerts[alert_id] = {
+        "id": alert_id,
+        "hook_id": hook_id,
+        "level": alert_level,
+        "tension": tension,
+        "prediction": prediction,
+        "created_at": datetime.now().isoformat(),
+        "status": "active",
+        "communications_sent": []
+    }
+    
+    # Prepare alert messages
+    location = alert_data.get('berth', 'Unknown') + " - " + alert_data.get('hook', 'Unknown Hook')
+    
+    if alert_level == "critical":
+        # CRITICAL: Radio + SMS + Push
+        radio_msg = f"EMERGENCY: Critical tension at {location}. {tension}% load. Immediate action required."
+        sms_msg = f"🚨 CRITICAL: {location} at {tension}% tension. {prediction.get('time_to_critical', 'Unknown')} min to failure. ACT NOW!"
+        push_title = "CRITICAL TENSION ALERT"
+        push_msg = f"{location}: {tension}% load - Immediate action required"
+        
+        # Send all communication types
+        radio_id = await broadcast_radio_alert(radio_msg, "emergency")
+        
+        # Send to all available crew
+        for crew_id, crew_info in crew_status.items():
+            if crew_info.get("status") != "off_duty":
+                sms_id = await send_sms_alert(crew_info.get("phone", ""), sms_msg, "critical")
+                push_id = await send_push_notification(crew_id, push_title, push_msg, "critical")
+                
+                active_alerts[alert_id]["communications_sent"].extend([radio_id, sms_id, push_id])
+    
+    elif alert_level == "high":
+        # HIGH: SMS + Push to relevant crew
+        sms_msg = f"⚠️ HIGH tension alert: {location} at {tension}% load. Monitor and prepare for adjustment."
+        push_title = "High Tension Alert"
+        push_msg = f"{location}: {tension}% - Monitor closely"
+        
+        # Send to deck officers and bosun
+        for crew_id, crew_info in crew_status.items():
+            if crew_info.get("role") in ["deck_officer", "bosun"] and crew_info.get("status") != "off_duty":
+                sms_id = await send_sms_alert(crew_info.get("phone", ""), sms_msg, "high")
+                push_id = await send_push_notification(crew_id, push_title, push_msg, "high")
+                
+                active_alerts[alert_id]["communications_sent"].extend([sms_id, push_id])
+    
+    elif alert_level == "medium":
+        # MEDIUM: Push notifications only
+        push_title = "Tension Warning"
+        push_msg = f"{location}: {tension}% tension - Attention required"
+        
+        # Send to relevant crew
+        for crew_id, crew_info in crew_status.items():
+            if crew_info.get("status") == "available":
+                push_id = await send_push_notification(crew_id, push_title, push_msg, "medium")
+                active_alerts[alert_id]["communications_sent"].append(push_id)
+    
+    return alert_id
+
+def get_crew_status_summary():
+    """Get summary of all crew member statuses"""
+    summary = {
+        "total_crew": len(crew_status),
+        "available": 0,
+        "responding": 0,
+        "busy": 0,
+        "off_duty": 0,
+        "crew_details": []
+    }
+    
+    for crew_id, crew_info in crew_status.items():
+        status = crew_info.get("status", "unknown")
+        summary[status] = summary.get(status, 0) + 1
+        
+        # Get latest activity
+        latest_response = None
+        for alert_responses in crew_responses.values():
+            for response in alert_responses:
+                if response["crew_member_id"] == crew_id:
+                    if not latest_response or response["timestamp"] > latest_response["timestamp"]:
+                        latest_response = response
+        
+        crew_detail = {
+            "id": crew_id,
+            "name": crew_info.get("name", "Unknown"),
+            "role": crew_info.get("role", "Unknown"),
+            "status": status,
+            "location": crew_info.get("location", "Unknown"),
+            "latest_activity": latest_response["timestamp"] if latest_response else "No recent activity"
+        }
+        summary["crew_details"].append(crew_detail)
+    
+    return summary
+
+# Initialize sample crew data
+crew_status = {
+    "crew_001": {
+        "name": "Chief Officer Johnson",
+        "role": "deck_officer", 
+        "phone": "+61400123456",
+        "radio_channel": "bridge",
+        "location": "Bridge",
+        "status": "available"
+    },
+    "crew_002": {
+        "name": "Bosun Smith",
+        "role": "bosun",
+        "phone": "+61400654321", 
+        "radio_channel": "deck",
+        "location": "Foredeck",
+        "status": "available"
+    },
+    "crew_003": {
+        "name": "AB Williams",
+        "role": "able_seaman",
+        "phone": "+61400789012",
+        "radio_channel": "deck", 
+        "location": "Stern",
+        "status": "available"
+    }
+}
+
 @app.post("/")
 async def receive_mooring_data(data: PortData):
     """Receive mooring data from the generator"""
@@ -568,6 +1366,95 @@ async def get_current_alerts():
     """API endpoint to get current tension alerts"""
     alerts = generate_tension_alerts()
     return {"alerts": alerts, "timestamp": datetime.now().isoformat()}
+
+@app.get("/api/ship-movements")
+async def get_ship_movements():
+    """API endpoint to get current ship movements data"""
+    movements = calculate_ship_movements()
+    return {"movements": movements, "timestamp": datetime.now().isoformat()}
+
+@app.get("/api/enhanced-tension/{hook_id}")
+async def get_enhanced_tension_data(hook_id: str):
+    """Get detailed enhanced tension data for a specific hook"""
+    if hook_id not in tension_history or not tension_history[hook_id]:
+        return {"error": "No data available for this hook"}
+    
+    recent_data = tension_history[hook_id][-20:]  # Last 20 readings
+    
+    # Get accuracy summary for this hook
+    accuracy_summary = enhanced_tension_monitor.get_accuracy_summary()
+    
+    return {
+        "hook_id": hook_id,
+        "recent_readings": recent_data,
+        "accuracy_summary": accuracy_summary,
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/api/system-accuracy-status")
+async def get_system_accuracy_status():
+    """Get overall system accuracy and sensor health status"""
+    accuracy_summary = enhanced_tension_monitor.get_accuracy_summary()
+    
+    # Add additional system health metrics
+    total_hooks = 0
+    active_hooks = 0
+    outlier_hooks = 0
+    low_confidence_hooks = 0
+    
+    for hook_id, history in tension_history.items():
+        if history:
+            total_hooks += 1
+            latest = history[-1]
+            
+            if latest.get('confidence', 0) > 0.6:
+                active_hooks += 1
+            
+            if latest.get('is_outlier', False):
+                outlier_hooks += 1
+            
+            if latest.get('confidence', 0) < 0.5:
+                low_confidence_hooks += 1
+    
+    system_health = {
+        "total_hooks": total_hooks,
+        "active_hooks": active_hooks,
+        "outlier_hooks": outlier_hooks,
+        "low_confidence_hooks": low_confidence_hooks,
+        "system_accuracy": accuracy_summary.get('overall_system_confidence', 0.8),
+        "status": "healthy" if accuracy_summary.get('overall_system_confidence', 0.8) > 0.7 else "degraded",
+        "recommendations": generate_system_accuracy_recommendations(accuracy_summary)
+    }
+    
+    return {
+        "system_health": system_health,
+        "accuracy_details": accuracy_summary,
+        "timestamp": datetime.now().isoformat()
+    }
+
+def generate_system_accuracy_recommendations(accuracy_summary):
+    """Generate recommendations for improving system accuracy"""
+    recommendations = []
+    
+    if accuracy_summary.get('low_confidence_sensors', 0) > 0:
+        recommendations.append(f"📊 {accuracy_summary['low_confidence_sensors']} sensors need attention")
+    
+    if accuracy_summary.get('overall_system_confidence', 0.8) < 0.6:
+        recommendations.append("🔧 System accuracy below acceptable threshold - schedule maintenance")
+    
+    if len(accuracy_summary.get('sensors_needing_attention', [])) > 0:
+        recommendations.append("⚠️ Multiple sensors requiring calibration or replacement")
+    
+    if not recommendations:
+        recommendations.append("✅ System accuracy is within acceptable parameters")
+    
+    return recommendations
+
+@app.get("/api/ship-3d-movements")
+async def get_ship_3d_movements():
+    """API endpoint to get current 3D ship movements data"""
+    movements_3d = calculate_3d_movements()
+    return {"movements": movements_3d, "timestamp": datetime.now().isoformat()}
 
 @app.get("/api/tension-history/{hook_id}")
 async def get_tension_history_for_hook(hook_id: str):
@@ -719,6 +1606,115 @@ async def get_system_health():
         'healthy_hooks': healthy_hooks,
         'sensor_issues': sensor_issues,
         'timestamp': datetime.now().isoformat()
+    }
+
+@app.get("/api/crew-status")
+async def get_crew_status():
+    """Get current crew status and assignments"""
+    return get_crew_status_summary()
+
+@app.post("/api/crew-response")
+async def record_crew_response(alert_id: str, crew_id: str, response_type: str, message: str = None):
+    """Record crew response to an alert"""
+    response = process_crew_response(alert_id, crew_id, response_type, message)
+    return {"status": "recorded", "response": response}
+
+@app.get("/api/communication-log")
+async def get_communication_log(limit: int = 50):
+    """Get recent communication log"""
+    return {
+        "communications": communication_log[-limit:],
+        "total_count": len(communication_log),
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/api/active-alerts")
+async def get_active_alerts():
+    """Get all active alerts with their status"""
+    active = {k: v for k, v in active_alerts.items() if v.get("status") == "active"}
+    return {
+        "active_alerts": active,
+        "total_active": len(active),
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.post("/api/manual-data-entry")
+async def submit_manual_data(hook_id: str, tension_value: int, crew_id: str, reason: str):
+    """Submit manual tension data when sensors fail"""
+    
+    # Validate input
+    if not (0 <= tension_value <= 100):
+        return {"error": "Tension value must be between 0 and 100"}
+    
+    if crew_id not in crew_status:
+        return {"error": "Unknown crew member"}
+    
+    # Create manual entry record
+    entry = {
+        "hook_id": hook_id,
+        "tension_value": tension_value,
+        "entered_by": crew_id,
+        "crew_name": crew_status[crew_id].get("name", "Unknown"),
+        "reason": reason,
+        "timestamp": datetime.now().isoformat(),
+        "confidence": 0.8,  # Lower confidence for manual entries
+        "type": "manual_entry"
+    }
+    
+    # Store in tension history with special marker
+    if hook_id not in tension_history:
+        tension_history[hook_id] = []
+    
+    tension_history[hook_id].append({
+        'timestamp': entry["timestamp"],
+        'tension': tension_value,
+        'manual': True,
+        'entered_by': crew_id,
+        'reason': reason
+    })
+    
+    # Log the manual entry
+    communication_log.append({
+        "id": f"manual_{datetime.now().timestamp()}",
+        "message_type": "manual",
+        "recipient": "system",
+        "content": f"Manual data entry: {hook_id} = {tension_value}% (Reason: {reason})",
+        "priority": "medium",
+        "sent_at": datetime.now().isoformat(),
+        "status": "recorded"
+    })
+    
+    logger.info(f"Manual data entry: {hook_id} = {tension_value}% by {crew_id}")
+    
+    return {"status": "recorded", "entry": entry}
+
+@app.post("/api/broadcast-alert")
+async def broadcast_custom_alert(message: str, priority: str = "medium", channels: List[str] = ["sms", "push"]):
+    """Broadcast custom alert message to crew"""
+    
+    message_ids = []
+    
+    if "radio" in channels and priority == "critical":
+        radio_id = await broadcast_radio_alert(message, "all")
+        message_ids.append(radio_id)
+    
+    if "sms" in channels:
+        for crew_id, crew_info in crew_status.items():
+            if crew_info.get("status") != "off_duty" and crew_info.get("phone"):
+                sms_id = await send_sms_alert(crew_info["phone"], f"📢 BROADCAST: {message}", priority)
+                message_ids.append(sms_id)
+    
+    if "push" in channels:
+        for crew_id, crew_info in crew_status.items():
+            if crew_info.get("status") != "off_duty":
+                push_id = await send_push_notification(crew_id, "Broadcast Alert", message, priority)
+                message_ids.append(push_id)
+    
+    return {
+        "status": "broadcasted",
+        "message_ids": message_ids,
+        "channels_used": channels,
+        "timestamp": datetime.now().isoformat()
     }
 
 if __name__ == "__main__":
