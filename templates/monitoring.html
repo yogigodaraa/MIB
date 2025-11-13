@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Tension Monitoring - BHP Mooring System</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        .header {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-left h1 {
+            margin: 0;
+            font-size: 2em;
+        }
+        .header-left p {
+            margin: 5px 0 0 0;
+            opacity: 0.9;
+        }
+        .emergency-contact {
+            background: rgba(255,255,255,0.2);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .emergency-contact h3 {
+            margin: 0 0 5px 0;
+            color: #fff;
+        }
+        .emergency-phone {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .navigation {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+        }
+        .nav-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .nav-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .nav-button.active {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        }
+        .alerts-panel {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 25px;
+            backdrop-filter: blur(10px);
+        }
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid rgba(255,255,255,0.2);
+            padding-bottom: 15px;
+        }
+        .alert-counter {
+            display: flex;
+            gap: 15px;
+        }
+        .counter-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        .counter-badge.critical { background: #f44336; }
+        .counter-badge.high { background: #ff9800; }
+        .counter-badge.medium { background: #ffc107; color: #333; }
+        .alert-item {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 15px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+        .alert-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .alert-item.critical {
+            border-color: #f44336;
+            background: linear-gradient(135deg, rgba(244, 67, 54, 0.2) 0%, rgba(244, 67, 54, 0.1) 100%);
+            animation: criticalPulse 2s infinite;
+        }
+        .alert-item.high {
+            border-color: #ff9800;
+            background: linear-gradient(135deg, rgba(255, 152, 0, 0.2) 0%, rgba(255, 152, 0, 0.1) 100%);
+        }
+        .alert-item.medium {
+            border-color: #ffc107;
+            background: linear-gradient(135deg, rgba(255, 193, 7, 0.2) 0%, rgba(255, 193, 7, 0.1) 100%);
+        }
+        @keyframes criticalPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7); }
+            50% { box-shadow: 0 0 0 10px rgba(244, 67, 54, 0); }
+        }
+        .alert-info {
+            flex-grow: 1;
+        }
+        .alert-location {
+            font-size: 1.1em;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .alert-details {
+            display: flex;
+            gap: 20px;
+            margin: 8px 0;
+        }
+        .alert-tension {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #fff;
+        }
+        .alert-prediction {
+            background: rgba(255,255,255,0.2);
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+        .prediction-trend {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 5px;
+        }
+        .trend-arrow {
+            font-size: 1.2em;
+        }
+        .trend-increasing { color: #f44336; }
+        .trend-decreasing { color: #4caf50; }
+        .trend-stable { color: #ffc107; }
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .action-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .action-btn:hover {
+            transform: scale(1.05);
+        }
+        .action-btn.emergency {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+        }
+        .monitoring-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-top: 25px;
+        }
+        .berth-monitor {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+        }
+        .berth-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #fff;
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+            padding-bottom: 10px;
+        }
+        .tension-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+        }
+        .tension-card {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid transparent;
+        }
+        .tension-card.safe { border-color: #4caf50; }
+        .tension-card.low { border-color: #8bc34a; }
+        .tension-card.medium { border-color: #ffc107; }
+        .tension-card.high { border-color: #ff9800; }
+        .tension-card.critical { 
+            border-color: #f44336; 
+            animation: criticalBlink 1s infinite;
+        }
+        @keyframes criticalBlink {
+            0%, 50% { background: rgba(244, 67, 54, 0.2); }
+            51%, 100% { background: rgba(255,255,255,0.1); }
+        }
+        .hook-name {
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .tension-display {
+            font-size: 2em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .tension-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .tension-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        .auto-refresh {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4caf50;
+            color: white;
+            padding: 12px 18px;
+            border-radius: 25px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 1000;
+        }
+        .recommendations {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 25px;
+            backdrop-filter: blur(10px);
+        }
+        .recommendation-item {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            border-left: 4px solid #667eea;
+        }
+        .no-alerts {
+            text-align: center;
+            color: #4caf50;
+            font-size: 1.2em;
+            padding: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="auto-refresh" id="autoRefresh" onclick="toggleAutoRefresh()">🔄 Auto-refresh: ON</div>
+    
+    <div class="header">
+        <div class="header-left">
+            <h1>⚠️ Real-Time Tension Monitoring</h1>
+            <p>BHP Mooring Safety System - {{ last_updated }}</p>
+        </div>
+        <div class="emergency-contact">
+            <h3>🚨 Emergency Contact</h3>
+            <div class="emergency-phone">+61-XXX-XXX-XXX</div>
+        </div>
+    </div>
+
+    <div class="navigation">
+        <a href="/" class="nav-button">📊 Dashboard</a>
+        <a href="/monitoring" class="nav-button active">⚠️ Monitoring</a>
+        <button class="nav-button" onclick="exportData()">📁 Export Data</button>
+        <button class="nav-button" onclick="showSettings()">⚙️ Settings</button>
+    </div>
+
+    <div class="alerts-panel">
+        <div class="alert-header">
+            <h2>🚨 Active Tension Alerts</h2>
+            <div class="alert-counter">
+                {% set critical_count = alerts|selectattr("level", "equalto", "critical")|list|length %}
+                {% set high_count = alerts|selectattr("level", "equalto", "high")|list|length %}
+                {% set medium_count = alerts|selectattr("level", "equalto", "medium")|list|length %}
+                <div class="counter-badge critical">Critical: {{ critical_count }}</div>
+                <div class="counter-badge high">High: {{ high_count }}</div>
+                <div class="counter-badge medium">Medium: {{ medium_count }}</div>
+            </div>
+        </div>
+
+        {% if alerts %}
+            {% for alert in alerts %}
+            <div class="alert-item {{ alert.level }}">
+                <div class="alert-info">
+                    <div class="alert-location">
+                        📍 {{ alert.berth }} → {{ alert.bollard }} → {{ alert.hook }}
+                        {% if alert.faulted %}<span style="color: #f44336;"> ⚠️ FAULTED</span>{% endif %}
+                    </div>
+                    <div class="alert-details">
+                        <div>
+                            <div class="alert-tension">{{ alert.current_tension }}% Tension</div>
+                            {% if alert.attached_line %}<div>Line Type: {{ alert.attached_line }}</div>{% endif %}
+                        </div>
+                        {% if alert.prediction and alert.prediction.trend != 'stable' %}
+                        <div class="alert-prediction">
+                            <div><strong>Prediction:</strong></div>
+                            <div class="prediction-trend">
+                                <span class="trend-arrow trend-{{ alert.prediction.trend }}">
+                                    {% if alert.prediction.trend == 'increasing' %}↗️{% elif alert.prediction.trend == 'decreasing' %}↘️{% else %}➡️{% endif %}
+                                </span>
+                                <span>{{ alert.prediction.trend|title }}</span>
+                            </div>
+                            {% if alert.prediction.predicted_5min %}
+                            <div>5min forecast: {{ alert.prediction.predicted_5min }}%</div>
+                            {% endif %}
+                            {% if alert.prediction.time_to_critical %}
+                            <div style="color: #f44336; font-weight: bold;">⏱️ Critical in {{ alert.prediction.time_to_critical }}min</div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="action-buttons">
+                    {% if alert.level == 'critical' %}
+                    <button class="action-btn emergency" onclick="emergencyAction('{{ alert.id }}')">🚨 Emergency Action</button>
+                    {% endif %}
+                    <button class="action-btn" onclick="adjustTension('{{ alert.id }}')">🔧 Adjust Tension</button>
+                    <button class="action-btn" onclick="viewHistory('{{ alert.id }}')">📈 View Trend</button>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="no-alerts">
+                <h3>✅ All Systems Normal</h3>
+                <p>No tension alerts detected. All mooring lines operating within safe parameters.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="monitoring-grid">
+        {% if latest_data and latest_data.berths %}
+            {% for berth in latest_data.berths %}
+            <div class="berth-monitor">
+                <div class="berth-title">🚢 {{ berth.name }} - {{ berth.ship.name }}</div>
+                {% for bollard in berth.bollards %}
+                    <h4>🔗 {{ bollard.name }}</h4>
+                    <div class="tension-grid">
+                        {% for hook in bollard.hooks %}
+                        <div class="tension-card {% if hook.tension %}{{ get_tension_class(hook.tension) }}{% else %}safe{% endif %}">
+                            <div class="hook-name">{{ hook.name }}</div>
+                            {% if hook.tension is not none %}
+                                <div class="tension-display">{{ hook.tension }}%</div>
+                                <div class="tension-bar">
+                                    <div class="tension-fill {{ get_tension_class(hook.tension) }}" style="width: {{ hook.tension }}%;"></div>
+                                </div>
+                            {% else %}
+                                <div class="tension-display">--</div>
+                                <div style="color: #999;">No Data</div>
+                            {% endif %}
+                            {% if hook.attachedLine %}
+                                <div style="font-size: 0.8em; margin-top: 5px;">{{ hook.attachedLine }}</div>
+                            {% endif %}
+                            {% if hook.faulted %}
+                                <div style="color: #f44336; font-weight: bold; margin-top: 5px;">⚠️ FAULT</div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        {% endif %}
+    </div>
+
+    <div class="recommendations">
+        <h3>💡 System Recommendations</h3>
+        <div id="recommendationsContainer">
+            <!-- Recommendations will be populated by JavaScript -->
+        </div>
+    </div>
+
+    <script>
+        let autoRefresh = true;
+        
+        function toggleAutoRefresh() {
+            autoRefresh = !autoRefresh;
+            const button = document.getElementById('autoRefresh');
+            button.textContent = autoRefresh ? '🔄 Auto-refresh: ON' : '⏸️ Auto-refresh: OFF';
+            button.style.backgroundColor = autoRefresh ? '#4caf50' : '#f44336';
+        }
+        
+        function getTensionClass(tension) {
+            if (tension >= {{ thresholds.critical }}) return 'critical';
+            if (tension >= {{ thresholds.high }}) return 'high';
+            if (tension >= {{ thresholds.medium }}) return 'medium';
+            if (tension >= {{ thresholds.low }}) return 'low';
+            return 'safe';
+        }
+
+        function emergencyAction(hookId) {
+            if (confirm('⚠️ EMERGENCY ACTION\n\nThis will initiate emergency protocols for ' + hookId + '.\n\nProceed?')) {
+                alert('🚨 Emergency protocols activated!\n\n1. Alert port control\n2. Notify ship captain\n3. Prepare emergency tension release\n4. Dispatch safety crew');
+                // Here you would call an emergency API endpoint
+            }
+        }
+
+        function adjustTension(hookId) {
+            const action = prompt('Select adjustment action:\n\n1. Release tension\n2. Increase tension\n3. Auto-adjust\n\nEnter 1, 2, or 3:');
+            if (action) {
+                alert('Tension adjustment initiated for ' + hookId + '\n\nAction: ' + 
+                     (action === '1' ? 'Release tension' : 
+                      action === '2' ? 'Increase tension' : 
+                      action === '3' ? 'Auto-adjust' : 'Invalid'));
+            }
+        }
+
+        function viewHistory(hookId) {
+            window.open('/api/tension-history/' + encodeURIComponent(hookId), '_blank');
+        }
+
+        function exportData() {
+            const data = {
+                timestamp: new Date().toISOString(),
+                alerts: {{ alerts | tojson }},
+                latest_data: {{ latest_data | tojson }}
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'mooring_data_' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.json';
+            a.click();
+        }
+
+        function showSettings() {
+            alert('Settings panel - Configure:\n\n• Alert thresholds\n• Notification preferences\n• Crew assignments\n• Emergency contacts\n• Prediction sensitivity');
+        }
+
+        function updateRecommendations() {
+            const recommendations = generateRecommendations();
+            const container = document.getElementById('recommendationsContainer');
+            container.innerHTML = recommendations.map(rec => 
+                `<div class="recommendation-item">
+                    <strong>${rec.priority}</strong>: ${rec.message}
+                    ${rec.action ? `<br><em>Recommended action: ${rec.action}</em>` : ''}
+                </div>`
+            ).join('');
+        }
+
+        function generateRecommendations() {
+            const alerts = {{ alerts | tojson }};
+            const recommendations = [];
+
+            if (alerts.length === 0) {
+                recommendations.push({
+                    priority: 'INFO',
+                    message: 'All mooring lines are operating within safe parameters. Continue regular monitoring.',
+                    action: 'Maintain current watch schedule'
+                });
+            } else {
+                const criticalCount = alerts.filter(a => a.level === 'critical').length;
+                const highCount = alerts.filter(a => a.level === 'high').length;
+
+                if (criticalCount > 0) {
+                    recommendations.push({
+                        priority: 'URGENT',
+                        message: `${criticalCount} critical tension alert(s) detected. Immediate action required.`,
+                        action: 'Activate emergency response protocol and notify port authority'
+                    });
+                }
+
+                if (highCount > 0) {
+                    recommendations.push({
+                        priority: 'HIGH',
+                        message: `${highCount} high tension alert(s) require attention.`,
+                        action: 'Deploy crew to inspect and adjust affected mooring lines'
+                    });
+                }
+
+                if (alerts.some(a => a.faulted)) {
+                    recommendations.push({
+                        priority: 'MAINTENANCE',
+                        message: 'Faulty tension sensors detected.',
+                        action: 'Schedule maintenance team to replace faulty equipment'
+                    });
+                }
+            }
+
+            return recommendations;
+        }
+
+        async function updateAlerts() {
+            if (!autoRefresh) return;
+            
+            try {
+                const response = await fetch('/api/alerts');
+                const result = await response.json();
+                
+                if (result.alerts && result.alerts.length !== {{ alerts | length }}) {
+                    location.reload();
+                }
+            } catch (error) {
+                console.log('Update failed:', error);
+            }
+        }
+
+        // Initialize recommendations
+        updateRecommendations();
+        
+        // Auto-refresh every 3 seconds for monitoring page
+        setInterval(updateAlerts, 3000);
+        
+        // Audio alert for critical conditions
+        function playAlertSound() {
+            const criticalAlerts = {{ alerts | selectattr("level", "equalto", "critical") | list | length }};
+            if (criticalAlerts > 0) {
+                // You could add audio alert here
+                console.log('🚨 CRITICAL ALERT SOUND');
+            }
+        }
+
+        playAlertSound();
+    </script>
+</body>
+</html>

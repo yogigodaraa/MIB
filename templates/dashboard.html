@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mooring Data Dashboard</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+        .data-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .berth {
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            margin: 15px 0;
+            padding: 15px;
+            background: #fafafa;
+        }
+        .berth-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .berth-name {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+        .ship-info {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 6px solid #2196f3;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .ship-details {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .ship-icon {
+            font-size: 2em;
+        }
+        .ship-text {
+            display: flex;
+            flex-direction: column;
+        }
+        .ship-name {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #1976d2;
+        }
+        .ship-id {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .berth-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .overview-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border: 1px solid #e0e0e0;
+        }
+        .overview-number {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #333;
+        }
+        .overview-label {
+            color: #666;
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border: 1px solid #e0e0e0;
+        }
+        .section-title {
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #555;
+            text-transform: uppercase;
+            font-size: 1em;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .section-icon {
+            margin-right: 10px;
+            font-size: 1.2em;
+        }
+        .radar-grid, .bollard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        .radar, .bollard {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .radar:hover, .bollard:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        .radar.active { 
+            border-color: #4caf50; 
+            background: linear-gradient(135deg, #f8fff8 0%, #e8f5e8 100%);
+        }
+        .radar.inactive { 
+            border-color: #f44336; 
+            background: linear-gradient(135deg, #fff8f8 0%, #ffe8e8 100%);
+        }
+        .bollard { 
+            border-color: #ff9800; 
+            background: linear-gradient(135deg, #fffaf0 0%, #fff3e0 100%);
+        }
+        .radar-status, .distance-info {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .status-badge.active {
+            background: #4caf50;
+            color: white;
+        }
+        .status-badge.inactive {
+            background: #f44336;
+            color: white;
+        }
+        .distance-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #333;
+            margin-right: 8px;
+        }
+        .distance-unit {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .change-indicator {
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.9em;
+            padding: 2px 6px;
+            border-radius: 12px;
+            margin-left: 8px;
+        }
+        .change-positive {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .change-negative {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+        .radar-name {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        .radar-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .radar-icon.active {
+            background: #4caf50;
+            animation: pulse 2s infinite;
+        }
+        .radar-icon.inactive {
+            background: #f44336;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+        }
+        .hook {
+            background: white;
+            margin: 8px 0;
+            padding: 12px;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+            font-size: 0.9em;
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .hook:hover {
+            border-color: #ccc;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .hook.faulted { 
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+            border-color: #f44336;
+            color: #c62828;
+        }
+        .hook-name {
+            font-weight: bold;
+            color: #333;
+        }
+        .hook-details {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .tension-meter {
+            display: inline-flex;
+            align-items: center;
+            background: #f5f5f5;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }
+        .tension-bar {
+            width: 40px;
+            height: 6px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            margin-left: 6px;
+            overflow: hidden;
+        }
+        .tension-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        .tension-low { background: #4caf50; }
+        .tension-medium { background: #ff9800; }
+        .tension-high { background: #f44336; }
+        .line-type {
+            display: inline-flex;
+            align-items: center;
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .fault-indicator {
+            display: inline-flex;
+            align-items: center;
+            background: #f44336;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            font-weight: bold;
+            animation: blink 1.5s infinite;
+        }
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.5; }
+        }
+        .bollard-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+        }
+        .bollard-name {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #333;
+            display: flex;
+            align-items: center;
+        }
+        .bollard-icon {
+            width: 16px;
+            height: 16px;
+            background: #ff9800;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .hook-count-badge {
+            background: #ff9800;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .status-active { color: #4caf50; font-weight: bold; }
+        .status-inactive { color: #f44336; font-weight: bold; }
+        .auto-refresh {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4caf50;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+        .no-data {
+            text-align: center;
+            color: #999;
+            font-style: italic;
+            padding: 40px;
+        }
+        .json-viewer {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="auto-refresh" id="autoRefresh">🔄 Auto-refresh: ON</div>
+    
+    <div class="header">
+        <h1>🚢 Mooring Data Dashboard</h1>
+        <p>Real-time visualization of port mooring data</p>
+        <p><strong>Last Updated:</strong> {{ last_updated }}</p>
+    </div>
+
+    <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px; margin-bottom: 20px; display: flex; gap: 15px;">
+        <a href="/" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 25px; text-decoration: none; font-weight: bold;">📊 Dashboard</a>
+        <a href="/monitoring" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); color: white; padding: 10px 20px; border-radius: 25px; text-decoration: none; font-weight: bold;">⚠️ Tension Monitoring</a>
+    </div>
+
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-number" id="dataCount">{{ data_count }}</div>
+            <div class="stat-label">Total Messages</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="portCount">
+                {% if latest_data %}1{% else %}0{% endif %}
+            </div>
+            <div class="stat-label">Active Ports</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="berthCount">
+                {% if latest_data and latest_data.berths %}{{ latest_data.berths|length }}{% else %}0{% endif %}
+            </div>
+            <div class="stat-label">Berths</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="lastUpdate">{{ last_updated.split(' ')[1] if ' ' in last_updated else 'N/A' }}</div>
+            <div class="stat-label">Last Update Time</div>
+        </div>
+    </div>
+
+    <div class="data-container" id="dataContainer">
+        {% if latest_data %}
+            <h2>Port: {{ latest_data.name }}</h2>
+            
+            {% for berth in latest_data.berths %}
+            <div class="berth">
+                <div class="berth-header">
+                    <div class="berth-name">{{ berth.name }}</div>
+                    <div>
+                        <span>🔗 {{ berth.bollardCount }} Bollards</span> | 
+                        <span>⚓ {{ berth.hookCount }} Hooks</span>
+                    </div>
+                </div>
+
+                <div class="ship-info">
+                    <div class="ship-details">
+                        <div class="ship-icon">🚢</div>
+                        <div class="ship-text">
+                            <div class="ship-name">{{ berth.ship.name }}</div>
+                            <div class="ship-id">Vessel ID: {{ berth.ship.vesselId }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="berth-overview">
+                    <div class="overview-card">
+                        <div class="overview-number">{{ berth.bollardCount }}</div>
+                        <div class="overview-label">Bollards</div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="overview-number">{{ berth.hookCount }}</div>
+                        <div class="overview-label">Total Hooks</div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="overview-number">{{ berth.radars|length }}</div>
+                        <div class="overview-label">Radars</div>
+                    </div>
+                    <div class="overview-card">
+                        <div class="overview-number">
+                            {% set active_radars = berth.radars|selectattr("distanceStatus", "equalto", "ACTIVE")|list %}
+                            {{ active_radars|length }}
+                        </div>
+                        <div class="overview-label">Active Radars</div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">📡 Radars ({{ berth.radars|length }})</div>
+                    <div class="radar-grid">
+                        {% for radar in berth.radars %}
+                        <div class="radar {{ radar.distanceStatus.lower() }}">
+                            <div class="radar-name">
+                                <div class="radar-icon {{ radar.distanceStatus.lower() }}"></div>
+                                {{ radar.name }}
+                            </div>
+                            <div class="radar-status">
+                                <span class="status-badge {{ radar.distanceStatus.lower() }}">
+                                    {% if radar.distanceStatus.lower() == 'active' %}🟢{% else %}🔴{% endif %}
+                                    {{ radar.distanceStatus }}
+                                </span>
+                            </div>
+                            {% if radar.shipDistance is not none %}
+                            <div class="distance-info">
+                                <span class="distance-value">{{ "%.1f"|format(radar.shipDistance) }}</span>
+                                <span class="distance-unit">meters</span>
+                                {% if radar.distanceChange is not none %}
+                                <span class="change-indicator {{ 'change-positive' if radar.distanceChange > 0 else 'change-negative' }}">
+                                    {% if radar.distanceChange > 0 %}↗️ +{% else %}↘️ {% endif %}{{ "%.1f"|format(radar.distanceChange|abs) }}m
+                                </span>
+                                {% endif %}
+                            </div>
+                            {% else %}
+                            <div class="distance-info">
+                                <span style="color: #999; font-style: italic;">No distance data</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">🔗 Bollards ({{ berth.bollards|length }})</div>
+                    <div class="bollard-grid">
+                        {% for bollard in berth.bollards %}
+                        <div class="bollard">
+                            <div class="bollard-header">
+                                <div class="bollard-name">
+                                    <div class="bollard-icon"></div>
+                                    {{ bollard.name }}
+                                </div>
+                                <div class="hook-count-badge">{{ bollard.hooks|length }} hooks</div>
+                            </div>
+                            <div class="hooks-container">
+                                {% for hook in bollard.hooks %}
+                                <div class="hook {% if hook.faulted %}faulted{% endif %}">
+                                    <div class="hook-name">{{ hook.name }}</div>
+                                    <div class="hook-details">
+                                        {% if hook.tension is not none %}
+                                        <div class="tension-meter">
+                                            T: {{ hook.tension }}
+                                            <div class="tension-bar">
+                                                <div class="tension-fill 
+                                                    {% if hook.tension < 30 %}tension-low
+                                                    {% elif hook.tension < 70 %}tension-medium
+                                                    {% else %}tension-high{% endif %}" 
+                                                    style="width: {{ hook.tension }}%;"></div>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                        {% if hook.attachedLine %}
+                                        <div class="line-type">{{ hook.attachedLine }}</div>
+                                        {% endif %}
+                                        {% if hook.faulted %}
+                                        <div class="fault-indicator">⚠️ FAULT</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            
+            <details style="margin-top: 20px;">
+                <summary style="cursor: pointer; font-weight: bold;">🔍 View Raw JSON Data</summary>
+                <div class="json-viewer">{{ latest_data }}</div>
+            </details>
+        {% else %}
+            <div class="no-data">
+                <h2>🔄 Waiting for data...</h2>
+                <p>Start the mooring data generator to see live data here:</p>
+                <code>/Users/yogigodara/Downloads/Projects/bhp-data/.venv/bin/mooring-data-generator http://127.0.0.1:8000/</code>
+            </div>
+        {% endif %}
+    </div>
+
+    <script>
+        let autoRefresh = true;
+        
+        function toggleAutoRefresh() {
+            autoRefresh = !autoRefresh;
+            const button = document.getElementById('autoRefresh');
+            button.textContent = autoRefresh ? '🔄 Auto-refresh: ON' : '⏸️ Auto-refresh: OFF';
+            button.style.backgroundColor = autoRefresh ? '#4caf50' : '#f44336';
+        }
+        
+        async function updateData() {
+            if (!autoRefresh) return;
+            
+            try {
+                const response = await fetch('/api/latest');
+                const result = await response.json();
+                
+                if (result.data && Object.keys(result.data).length > 0) {
+                    // Update stats
+                    document.getElementById('dataCount').textContent = result.count;
+                    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+                    
+                    // Reload page with new data if it's different
+                    location.reload();
+                }
+            } catch (error) {
+                console.log('Update failed:', error);
+            }
+        }
+        
+        // Auto-refresh every 2 seconds
+        setInterval(updateData, 2000);
+        
+        // Toggle auto-refresh on click
+        document.getElementById('autoRefresh').addEventListener('click', toggleAutoRefresh);
+        
+        console.log('Dashboard ready! Waiting for mooring data...');
+    </script>
+</body>
+</html>
