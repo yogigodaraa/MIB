@@ -7,14 +7,10 @@ A FastAPI web dashboard to visualize incoming mooring data in real-time.
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import List, Optional, Union, Dict
-import json
-from datetime import datetime, timedelta
+from datetime import datetime
 import uvicorn
-import random
-import math
 import statistics
 import asyncio
 import logging
@@ -359,11 +355,9 @@ def predict_movement_trend(berth_name, current_distance, current_change, hook_te
     # Analyze trend if we have enough data
     if len(tension_history[movement_key]) >= 3:
         recent_changes = [reading['change'] for reading in tension_history[movement_key][-5:]]
-        recent_distances = [reading['distance'] for reading in tension_history[movement_key][-5:]]
         
         # Calculate trends
         avg_recent_change = sum(recent_changes) / len(recent_changes)
-        distance_trend = recent_distances[-1] - recent_distances[0] if len(recent_distances) > 1 else 0
         
         # Determine trend
         if abs(avg_recent_change) > 0.2:
@@ -850,7 +844,6 @@ def predict_load_distribution(hook_categories, environmental_factors=None):
     
     if environmental_factors:
         wind_speed = environmental_factors.get('wind_speed', 0)
-        wind_direction = environmental_factors.get('wind_direction', 'unknown')
         wave_height = environmental_factors.get('wave_height', 0)
         
         # Example predictions based on environmental factors
@@ -1009,7 +1002,7 @@ def generate_hook_communication_notes(hook_info):
         if prediction.get('time_to_critical'):
             notes.append(f"⏰ Time to critical: {prediction['time_to_critical']} minutes")
     elif prediction['trend'] == 'decreasing':
-        notes.append(f"⬇️ Tension decreasing - continue monitoring")
+        notes.append("⬇️ Tension decreasing - continue monitoring")
     else:
         notes.append(f"➡️ Tension stable at {tension}%")
     

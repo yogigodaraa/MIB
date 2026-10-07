@@ -6,8 +6,8 @@ Advanced accuracy improvements for hook tension monitoring
 
 import math
 import statistics
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import List, Optional, Tuple
 from collections import deque
 import logging
 
@@ -477,8 +477,6 @@ class EnhancedTensionMonitor:
         
         for hook_id, buffer in self.sensor_data_buffer.items():
             if buffer:
-                # Get latest reading confidence (would need to track this)
-                latest_reading = buffer[-1]
                 # Placeholder confidence calculation
                 confidence = 0.8  
                 

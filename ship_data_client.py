@@ -5,13 +5,12 @@ Collects sensor data from ship systems and pushes to dashboard API
 """
 
 import asyncio
-import json
 import time
 import random
 import math
 from datetime import datetime, timedelta
 import httpx
-from typing import Dict, List, Optional
+from typing import Dict, List
 import logging
 from dataclasses import dataclass
 import signal
@@ -212,7 +211,7 @@ class DashboardCommunicator:
         try:
             response = await self.client.get(f"{self.dashboard_url}/api/latest")
             return response.status_code == 200
-        except:
+        except Exception:
             return False
     
     async def close(self):
