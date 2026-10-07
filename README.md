@@ -1,5 +1,10 @@
 # MIB — Mooring Intelligent Backend
 
+[![CI](https://github.com/yogigodaraa/MIB/actions/workflows/ci.yml/badge.svg)](https://github.com/yogigodaraa/MIB/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**Live demo:** <https://mib-psi.vercel.app>
+
 Real-time BHP mooring-hook tension monitoring with predictive alerts and a visual crew dashboard.
 
 ## What it does
@@ -59,3 +64,20 @@ COMMUNICATION_ARCHITECTURE.md      Service communication design
 ## Status
 
 Active development. See `TECHNICAL_DOCUMENTATION.md` for deep dive.
+
+## Tests
+
+```bash
+pip install -r requirements.txt
+pytest          # smoke tests: /health, steady readings, spike → outlier
+ruff check .
+cd web && npm ci && npm run lint && npm run build
+```
+
+## Related projects
+
+Part of the BHP / UWA mooring work. Each repo takes a different approach to the same problem:
+
+- [bhp](https://github.com/yogigodaraa/bhp): Mooring Portal (Next.js) with a four-pillar data-quality pipeline
+- [TensionBot](https://github.com/yogigodaraa/TensionBot): synthetic sensor-data generator + live dashboard
+

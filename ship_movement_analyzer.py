@@ -7,8 +7,7 @@ Dedicated module for analyzing and calculating ship movements in 3D space
 import math
 import statistics
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
-import json
+from typing import Dict, List, Tuple
 
 class ShipMovementAnalyzer:
     def __init__(self):

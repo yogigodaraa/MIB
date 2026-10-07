@@ -6,7 +6,7 @@ Service for managing crew communication, alerts, and responses.
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from ..models import (
     CrewMember, AlertResponse, CommunicationMessage, 
