@@ -1,32 +1,32 @@
 # BHP Mooring Data Dashboard Requirements
 # Core web framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
 
 # Data validation and serialization
-pydantic==2.5.0
-pydantic-settings==2.1.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
 
 # Template engine
 jinja2==3.1.6
 
 # File handling
-python-multipart==0.0.31
+python-multipart==0.0.32
 aiofiles==23.2.1
 
 # HTTP client for external requests
-httpx==0.26.0
+httpx==0.28.1
 
 # Data processing
-python-dateutil==2.8.2
+python-dateutil==2.9.0.post0
 
 # Logging enhancements
-colorlog==6.8.0
+colorlog==6.12.0
 
 # Development dependencies (optional)
-pytest==9.0.3
+pytest==9.1.1
 pytest-asyncio==1.4.0
-black==26.3.1
+black==26.5.1
 flake8==6.1.0
 
 # Standard library modules (included in Python)
