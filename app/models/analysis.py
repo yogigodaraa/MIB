@@ -4,7 +4,7 @@ Pydantic models for movement analysis and monitoring results.
 """
 
 from pydantic import BaseModel
-from typing import Dict, List, Optional
+from typing import List, Optional
 from datetime import datetime
 
 

@@ -4,7 +4,6 @@ Pydantic models for ship-related data structures.
 """
 
 from pydantic import BaseModel
-from typing import Optional
 
 
 class ShipData(BaseModel):

@@ -5,10 +5,9 @@ API endpoints for tension monitoring, alerts, and analysis.
 
 from fastapi import APIRouter
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
 from ..services import TensionMonitoringService, DataManagementService
-from ..models import Alert
 from ..utils.helpers import get_alert_priority
 
 router = APIRouter(prefix="/api")

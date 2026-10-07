@@ -8,7 +8,6 @@ from datetime import datetime
 from typing import List
 
 from ..services import CommunicationService, DataManagementService
-from ..models import Alert
 
 router = APIRouter(prefix="/api")
 

@@ -6,11 +6,11 @@ Service for analyzing ship movements in 3D space.
 import math
 import statistics
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from ..models import (
     ShipMovement, MovementVector, Position3D, MovementAnalysis, 
-    MovementPrediction, BerthData
+    MovementPrediction
 )
 
 

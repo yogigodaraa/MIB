@@ -5,12 +5,12 @@ Enhanced tension monitoring with accuracy improvements.
 
 import math
 import statistics
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import List, Tuple
 from collections import deque
 import logging
 
-from ..models import HookData, Alert, TensionPrediction
+from ..models import TensionPrediction
 
 logger = logging.getLogger(__name__)
 

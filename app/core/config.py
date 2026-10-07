@@ -5,7 +5,6 @@ Central configuration management for the BHP Mooring Data Dashboard.
 
 from pydantic_settings import BaseSettings
 from typing import Dict, Any, Optional
-import os
 
 
 class Settings(BaseSettings):
