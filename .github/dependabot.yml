@@ -1,20 +1,37 @@
+# FROZEN: open-pull-requests-limit 0 stops routine version-update PRs.
+# Dependabot *security* updates are separate and still open PRs.
+# Grouped so each ecosystem opens at most two PRs a week:
+#   minor-and-patch -> auto-merged once CI passes
+#   major           -> one PR to review by hand
 version: 2
 updates:
   - package-ecosystem: pip
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+      major:
+        update-types: [major]
   - package-ecosystem: npm
     directory: /web
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+      major:
+        update-types: [major]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+      major:
+        update-types: [major]
